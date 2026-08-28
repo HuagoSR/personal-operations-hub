@@ -1,0 +1,19 @@
+services:
+  agent-wechat:
+    image: ghcr.io/thisnick/agent-wechat:latest
+    container_name: wx-research-agent-wechat
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - SYS_PTRACE
+    ports:
+      - "127.0.0.1:6174:6174"
+    volumes:
+      - wx-research-data:/data
+      - wx-research-home:/home/wechat
+      - ./token:/data/auth-token:ro
+    restart: unless-stopped
+
+volumes:
+  wx-research-data:
+  wx-research-home:

@@ -1,0 +1,15 @@
+{
+  "name": "wechat-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only WeChat message collector gateway (GET-only client for agent-wechat)",
+  "main": "src/collector.js",
+  "scripts": {
+    "start": "node src/collector.js",
+    "stop": "bash scripts/stop.sh",
+    "status": "bash scripts/status.sh",
+    "report": "bash scripts/report.sh"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {}
+}

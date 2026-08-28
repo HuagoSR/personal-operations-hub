@@ -1,0 +1,21 @@
+{
+  "port": 8300,
+  "host": "127.0.0.1",
+  "data_dir": "data",
+  "db_path": "",
+  "spool_dir": "/home/huagosr/wechat-linux-research/gateway/data/spool",
+  "ingest_enabled": true,
+  "ingest_interval_ms": 5000,
+  "inbox_rule": "mentioned_or_direct",
+  "dispatcher_interval_ms": 1000,
+  "pump_interval_ms": 500,
+  "sweep_interval_ms": 1000,
+  "approval_default_ttl_ms": 86400000,
+  "worker_step_delay_ms": 100,
+  "worker_crash_retry_ms": 2000,
+  "worker_crash_max_attempts": 3,
+  "execution_timeout_ms": 60000,
+  "outbox_max_attempts": 5,
+  "outbox_backoff_ms": [1000, 2000, 4000, 8000, 15000],
+  "log_level": "INFO"
+}

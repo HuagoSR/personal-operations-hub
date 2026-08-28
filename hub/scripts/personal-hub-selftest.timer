@@ -1,0 +1,9 @@
+[Unit]
+Description=Personal Hub V0.1 hourly selftest
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

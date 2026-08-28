@@ -1,0 +1,16 @@
+[Unit]
+Description=WeChat Read-only Gateway V0.1
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/wechat-linux-research/gateway
+ExecStart=/usr/bin/node %h/wechat-linux-research/gateway/src/collector.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+StandardOutput=append:%h/wechat-linux-research/gateway/logs/systemd.log
+StandardError=append:%h/wechat-linux-research/gateway/logs/systemd.log
+
+[Install]
+WantedBy=default.target

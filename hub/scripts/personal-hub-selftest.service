@@ -1,0 +1,8 @@
+[Unit]
+Description=Personal Hub V0.1 selftest sampler
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/wechat-linux-research/hub
+Environment=NODE_NO_WARNINGS=1
+ExecStart=/bin/bash -lc "node scripts/selftest.js >> data/selftest.jsonl 2>&1"

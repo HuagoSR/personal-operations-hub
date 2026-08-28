@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tasks</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <h4>Task Candidates</h4>
+    <div id="candidates"></div>
+    <h4 class="mt-4">Tasks</h4>
+    <div id="tasks"></div>
+  </div>
+  <script src="/app.js"></script>
+  <script>
+    window.hub.page('Tasks');
+    (async () => {
+      const [cands, tasks] = await Promise.all([
+        window.hub.api('GET', '/api/candidates'),
+        window.hub.api('GET', '/api/tasks'),
+      ]);
+      document.getElementById('candidates').innerHTML = cands.map((c) => `
+        <div class="card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <div><strong>${window.hub.esc(c.title)}</strong>
+                <span class="badge bg-secondary">${window.hub.esc(c.origin_type)}</span>
+                ${window.hub.badge(c.state)} <span class="text-muted small">#${c.id}</span>
+              </div>
+              <div>
+                ${c.state === 'OPEN' ? `
+                  <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${window.hub.esc(c.title).replace(/'/g, "\\'")}')">批准</button>
+                  <button class="btn btn-sm btn-danger" onclick="reject(${c.id})">拒绝</button>` : ''}
+              </div>
+            </div>
+            ${c.description ? `<div class="text-muted small mt-1">${window.hub.esc(c.description)}</div>` : ''}
+          </div>
+        </div>`).join('') || '<div class="text-muted">暂无任务候选。可在 Inbox 或 Conversations 中创建。</div>';
+
+      document.getElementById('tasks').innerHTML = tasks.map((t) => `
+        <div class="card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <div><strong>#${t.id} ${window.hub.esc(t.title)}</strong> ${window.hub.badge(t.state)}</div>
+              <div>
+                ${!['COMPLETED', 'CANCELLED'].includes(t.state) ? `
+                  <button class="btn btn-sm btn-outline-danger" onclick="cancelTask(${t.id})">取消</button>` : ''}
+                ${['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(t.state) ? `
+                  <button class="btn btn-sm btn-outline-primary" onclick="another(${t.id})">再次执行</button>` : ''}
+              </div>
+            </div>
+            <div id="task-execs-${t.id}" class="mt-2 small"></div>
+          </div>
+        </div>`).join('') || '<div class="text-muted">暂无任务</div>';
+
+      for (const t of tasks) {
+        const d = await window.hub.api('GET', '/api/tasks/' + t.id);
+        const box = document.getElementById('task-execs-' + t.id);
+        box.innerHTML = '<div class="mb-1 fw-bold">Executions</div>' + d.executions.map((ex) => `
+          <div class="border rounded p-2 mb-1">
+            <span class="badge bg-dark">#${ex.id}</span> ${window.hub.esc(ex.scenario)} ${window.hub.badge(ex.state)}
+            <span class="text-muted">attempt=${ex.attempt}</span>
+            ${ex.error ? `<div class="text-danger">${window.hub.esc(ex.error)}</div>` : ''}
+            ${ex.questions.filter((q) => q.state === 'OPEN').map((q) => `
+              <div class="mt-1">
+                <span class="badge bg-warning">Worker 提问</span> ${window.hub.esc(q.question)}
+                <form class="d-flex gap-1 mt-1" onsubmit="return answer(event, ${ex.id}, ${q.id})">
+                  <input class="form-control form-control-sm" name="a" placeholder="回答">
+                  <button class="btn btn-sm btn-primary">回答</button>
+                </form>
+              </div>`).join('')}
+            ${ex.permissions.filter((p) => p.state === 'OPEN').map((p) => `
+              <div class="mt-1">
+                <span class="badge bg-warning">权限请求</span> ${window.hub.esc(p.capability)}
+                <button class="btn btn-sm btn-success ms-1" onclick="perm(${ex.id}, ${p.id}, 'allow')">允许</button>
+                <button class="btn btn-sm btn-danger" onclick="perm(${ex.id}, ${p.id}, 'deny')">拒绝</button>
+              </div>`).join('')}
+            ${ex.result ? `<div class="mt-1"><a href="/results.html?id=${ex.result.id}">结果 #${ex.result.id} →</a></div>` : ''}
+          </div>`).join('') + '<div class="mb-1 fw-bold">Grants</div>' +
+          d.grants.map((g) => `<span class="badge bg-secondary me-1">Grant #${g.id} ${window.hub.esc(g.worker)} ${g.state}</span>`).join('');
+      }
+
+      window.reject = async (id) => {
+        const reason = prompt('拒绝原因（可留空）');
+        if (reason === null) return;
+        try { await window.hub.api('POST', `/api/candidates/${id}/reject`, { reason: reason || null }); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+      };
+      window.cancelTask = async (id) => {
+        try { await window.hub.api('POST', `/api/tasks/${id}/cancel`, {}); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+      };
+      window.another = async (id) => {
+        const scenario = prompt('场景（SUCCESS/FAIL/WAIT_FOR_USER/WAIT_FOR_APPROVAL/TIMEOUT/CRASH_ONCE_THEN_SUCCESS）', 'SUCCESS');
+        if (scenario === null) return;
+        try { await window.hub.api('POST', `/api/tasks/${id}/executions`, { scenario }); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+      };
+      window.answer = async (ev, exId, qId) => {
+        ev.preventDefault();
+        const a = ev.target.elements.a.value;
+        try { await window.hub.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: a }); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+        return false;
+      };
+      window.perm = async (exId, pId, decision) => {
+        try { await window.hub.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+      };
+    })().catch(window.hub.formError);
+  </script>
+</body>
+</html>

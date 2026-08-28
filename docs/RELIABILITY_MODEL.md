@@ -1,0 +1,39 @@
+# 可靠性模型（RELIABILITY_MODEL）
+
+> Hub 状态可靠性的核心机制。全部已在 V0.1 落地并有测试覆盖（见 `research/HUB_V01_REPORT.md`）。实现位于 `hub/src/services/`（state-machine / tx / audit / outbox / dispatcher / sweep）。
+
+## 1. version（乐观并发）
+
+所有状态实体带 version；状态更新一律：
+
+```sql
+UPDATE tasks SET state=?, version=version+1 WHERE id=? AND state=? AND version=?
+```
+
+防双审批、防旧请求覆盖新状态；失败=版本冲突（幂等场景下调用方判"已处理"）。
+
+## 2. idempotency key（幂等摄入）
+
+- Source 摄入：`{gateway_id}:{chat_id}:{local_id}` UNIQUE——Gateway 重放只产生一条 RawMessage/Event。
+- 候选侧：`origin_type + origin_id` UNIQUE——同一来源重复评估不重复建候选。
+
+## 3. append-only 日志
+
+`transition_log`（entity/from/to/actor/reason/time）+ `domain_events`，与状态更新**同事务**写入；SQLite 触发器禁 UPDATE/DELETE。实体当前状态=快查；日志=审计与重建。
+
+## 4. transactional outbox
+
+禁止"状态提交后再调 Worker"。正确模式：状态更新 + OutboxEvent 同事务 COMMIT，独立 dispatcher 幂等消费：
+
+- 投递语义：at-least-once；`execution_dispatch_id` UNIQUE 实现 effectively-once 执行（可重复消费，Worker 不真正启动两次）
+- retry/backoff/max attempts/dead letter；重启后 pending 事件继续消费
+
+## 5. 审批与恢复
+
+- Approval TTL：过期→不能继续执行+审计
+- Grant 吊销：后续 Worker permission 不得自动放行（评测点：决策时实时读 Grant 状态）
+- 执行 watchdog：RUNNING 超 deadline → FAILED（防假 RUNNING 老化）
+
+## 6. 验收场景（V0.1 已全 PASS；Phase 4 的故障清单见 PHASE4_PLAN）
+
+Source 幂等 / 双审批 / crash-after-approval / 重复派发 / Worker 失败 / WAITING_FOR_USER 重启恢复 / Approval 过期 / Grant 吊销 / Result 不可变 / Worker 不能完成 Task。

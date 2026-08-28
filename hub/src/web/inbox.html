@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inbox</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/style.css" rel="stylesheet">
+</head>
+<body>
+  <div id="nav"></div>
+  <div class="container">
+    <h4>Inbox</h4>
+    <div id="items"></div>
+  </div>
+  <script src="/app.js"></script>
+  <script>
+    window.hub.page('Inbox');
+    (async () => {
+      const items = await window.hub.api('GET', '/api/inbox');
+      const el = document.getElementById('items');
+      if (!items.length) { el.innerHTML = '<div class="text-muted">暂无 Inbox 条目（@提及或私聊消息会出现在这里）</div>'; return; }
+      el.innerHTML = items.map((i) => `
+        <div class="card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <div>
+                ${window.hub.badge(i.state)}
+                ${i.priority_hint === 'mentioned' ? '<span class="badge bg-danger">@提及</span>' : ''}
+                <strong>${window.hub.esc(i.chat_name || i.source)}</strong>
+                <span class="text-muted small">#${i.id}</span>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="detail(${i.id})">查看上下文</button>
+                <button class="btn btn-sm btn-outline-success" onclick="convert(${i.id})">创建任务</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'ignore')">忽略</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'archive')">归档</button>
+              </div>
+            </div>
+            <div id="detail-${i.id}" class="mt-2 small" style="display:none"></div>
+          </div>
+        </div>`).join('');
+      window.detail = async (id) => {
+        const box = document.getElementById('detail-' + id);
+        if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+        const d = await window.hub.api('GET', '/api/inbox/' + id);
+        box.style.display = 'block';
+        box.innerHTML = '<pre class="json">' + d.rawMessages.map((m) => window.hub.esc(JSON.stringify(JSON.parse(m.raw_json), null, 2))).join('\n') + '</pre>';
+      };
+      window.act = async (id, action) => {
+        try { await window.hub.api('POST', `/api/inbox/${id}/${action}`, {}); location.reload(); }
+        catch (e) { window.hub.formError(e); }
+      };
+      window.convert = async (id) => {
+        const title = prompt('任务标题（可留空使用默认）');
+        if (title === null) return;
+        try {
+          await window.hub.api('POST', `/api/inbox/${id}/convert`, { title: title || null });
+          location.reload();
+        } catch (e) { window.hub.formError(e); }
+      };
+    })().catch(window.hub.formError);
+  </script>
+</body>
+</html>

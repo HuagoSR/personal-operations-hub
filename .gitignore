@@ -1,0 +1,17 @@
+# runtime data & secrets
+data/
+logs/
+config.json
+token
+*.db
+*.db-shm
+*.db-wal
+*.jsonl
+*.tar.gz
+*.png
+node_modules/
+collector-state.json
+
+# dev artifacts
+hub/tests/
+research/soak/
