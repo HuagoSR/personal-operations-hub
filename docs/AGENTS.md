@@ -8,7 +8,7 @@
 
 - **微信 Gateway**（已完成，7 天稳定性测试进行中）：官方 Linux 微信（容器）→ agent-wechat → 微信本地数据库只读读取 → Gateway V0.1 collector，systemd --user 托管。历史见 `research/GATEWAY_HISTORY.md`。
 - **Hub V0.1**（已完成）：自研状态机 + SQLite（node:sqlite）+ 事务 Outbox + 幂等 Dispatcher + FakeWorker + spool 只读摄入 + Control Web（127.0.0.1:8300，systemd --user `personal-hub`）。26 测试 PASS + 24h 自测 PASS，tag `v0.1-known-good`。见 `research/HUB_V01_REPORT.md`。
-- **Phase 4 Real Worker Foundation**（进行中）：OpenCodeWorker + CodexWorker + Enforcement Gate，计划见 `research/PHASE4_PLAN.md`。
+- **Phase 4 Real Worker Foundation**（进行中，接近完成）：CodexWorker 端到端闭环已跑通（bwrap Enforcement 8/8、真实修复任务、权限 ALLOW/ASK 链）；OpenCodeWorker 适配器就绪但被上游 models.dev 目录回归阻断。报告：`research/PHASE4_PLAN.md` + `PHASE4_REPORT_*`。
 - 无 LLM 智能管线、无通知系统（Phase 7/8 之后）。
 
 ## Architecture Principles

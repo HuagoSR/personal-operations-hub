@@ -134,6 +134,7 @@ function approveCandidate(db, {
     throw new ApprovalExpiredError(approval.id, approval.expires_at);
   }
   if (!SCENARIOS.includes(scenario)) throw new BadRequestError(`unknown scenario ${scenario}`);
+  if (!['fake-worker', 'opencode', 'codex'].includes(worker)) throw new BadRequestError(`unknown worker ${worker}`);
   const caps = Object.assign({}, DEFAULT_CAPABILITIES, capabilities || {});
 
   return tx(db, () => {

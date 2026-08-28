@@ -171,7 +171,15 @@ function createServiceFacade(db, ctx) {
     },
 
     cancelTask(id, body) {
-      return cancelTask(db, { taskId: id, actor: USER_ACTOR, reason: body.reason });
+      const r = cancelTask(db, { taskId: id, actor: USER_ACTOR, reason: body.reason });
+      const rt = ctx.workerRuntime;
+      if (rt) {
+        const { listExecutions } = require('../domain/execution');
+        for (const ex of listExecutions(db, { taskId: id })) {
+          rt.cancelWorker(db, ctx, ex).catch(() => {});
+        }
+      }
+      return r;
     },
 
     requestAnotherExecution(id, body) {
@@ -210,15 +218,25 @@ function createServiceFacade(db, ctx) {
     },
 
     answerQuestion(id, qid, body) {
-      return answerQuestion(db, {
+      const r = answerQuestion(db, {
         executionId: id, questionId: qid, answer: body.answer || '', actor: USER_ACTOR,
       });
+      const rt = ctx.workerRuntime;
+      if (rt) {
+        rt.forwardAnswer(ctx, id, body.answer || '').catch(() => {});
+      }
+      return r;
     },
 
     decidePermission(id, pid, body) {
-      return decidePermissionRequest(db, {
+      const r = decidePermissionRequest(db, {
         executionId: id, permissionId: pid, decision: body.decision, actor: USER_ACTOR,
       });
+      const rt = ctx.workerRuntime;
+      if (rt && r && r.ok !== false && body.decision) {
+        rt.forwardDecision(ctx, id, body.decision).catch(() => {});
+      }
+      return r;
     },
 
     resultList(taskId) {

@@ -22,6 +22,7 @@ const ctx = {
     iso: () => new Date().toISOString(),
     ms: () => Date.now(),
   },
+  workerRuntime: require('./services/worker-runtime'),
 };
 
 const server = createServer(db, ctx, cfg);
@@ -39,7 +40,7 @@ async function loop(fn, ms, name) {
   while (!stopping) {
     const t = Date.now();
     try {
-      fn();
+      await fn();
     } catch (e) {
       logger.error(`${name} error: ${e.stack || e.message}`);
     }
@@ -61,9 +62,7 @@ loop(() => {
   consumeOutboxOnce(db, ctx);
 }, cfg.dispatcherIntervalMs, 'dispatcher');
 
-loop(() => {
-  pumpOnce(db, ctx);
-}, cfg.pumpIntervalMs, 'pump');
+loop(() => pumpOnce(db, ctx), cfg.pumpIntervalMs, 'pump');
 
 loop(() => {
   const r = sweepOnce(db, ctx);
@@ -75,12 +74,13 @@ function shutdown(sig) {
   if (stopping) return;
   stopping = true;
   logger.info(`received ${sig}, shutting down`);
+  try { ctx.workerRuntime.shutdownAll(); } catch (e) { }
   server.close(() => {
     try { db.close(); } catch (e) { }
     logger.info('shutdown complete');
     process.exit(0);
   });
-  setTimeout(() => process.exit(0), 5000).unref();
+  setTimeout(() => process.exit(0), 8000).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));

@@ -65,12 +65,17 @@ function consumeOutboxOnce(db, ctx) {
   return rows.length;
 }
 
-function pumpOnce(db, ctx) {
+async function pumpOnce(db, ctx) {
   const rows = listRunnableExecutions(db, ctx.clock.iso());
   for (const ex of rows) {
     try {
-      const res = fakeWorker.step(db, ex, ctx);
-      if (res && ctx.logger) ctx.logger.debug(`pump execution=${ex.id} action=${res}`);
+      if (ex.worker === 'fake-worker') {
+        const res = fakeWorker.step(db, ex, ctx);
+        if (res && ctx.logger) ctx.logger.debug(`pump execution=${ex.id} action=${res}`);
+      } else {
+        const runtime = ctx.workerRuntime || require('./worker-runtime');
+        await runtime.pumpExecution(db, ctx, ex);
+      }
     } catch (e) {
       if (ctx.logger) ctx.logger.warn(`pump error execution=${ex.id} err=${e.message}`);
     }

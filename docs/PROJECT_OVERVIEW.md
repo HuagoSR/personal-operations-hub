@@ -25,7 +25,7 @@
 |---|---|
 | 微信 Gateway（只读采集） | ✅ 运行中（systemd --user）；7 天 soak 测试进行中 |
 | Hub V0.1 | ✅ 完成：SQLite 状态机 + Outbox + FakeWorker + spool 摄入 + Control Web；26 测试 PASS + 24h 自测 PASS（tag `v0.1-known-good`） |
-| Phase 4 Real Worker Foundation | 🔄 进行中：OpenCode/Codex 运行时验证 → Enforcement Gate → AgentWorker → 双 Worker → WorkerManager（见 `research/PHASE4_PLAN.md`） |
+| Phase 4 Real Worker Foundation | 🔄 接近完成：CodexWorker 端到端闭环 ✅（bwrap Enforcement 8/8、权限 ALLOW/ASK 链、真实修复任务）；OpenCodeWorker 被上游目录回归阻断（适配器就绪）；结论 READY_WITH_FIXES（`research/PHASE4_REPORT_FINAL.md`） |
 | Control Channel | ✅ Web 最小版；PWA+Push 未做（Phase 8） |
 | 通知 / 智能管线 / 多源 | ❌ 未开发（Phase 7/8/9） |
 

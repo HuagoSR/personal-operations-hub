@@ -9,13 +9,15 @@
 - **Phase 2** Hub 架构研究 → DONE（2026-08-25，`research/ARCHITECTURE_RESEARCH.md`）
 - **Phase 3–7（合并）** Hub V0.1：数据模型+状态机+outbox+dispatcher+FakeWorker+spool 摄入+Control Web → DONE（2026-08-27，26 测试 PASS + 24h 自测 PASS，`research/HUB_V01_REPORT.md`，tag `v0.1-known-good`）
 
-## Phase 4 — Real Worker Foundation（当前）
+## Phase 4 — Real Worker Foundation（进行中，接近完成）
 
-用真正 OpenCode/Codex Worker 替换 FakeWorker，Hub 能控制/审批/等待/恢复/限制越权/拿回结果。十三阶段 + 完成标准详见 `research/PHASE4_PLAN.md`：
+用真正 OpenCode/Codex Worker 替换 FakeWorker。计划见 `research/PHASE4_PLAN.md`，各阶段报告见 `research/PHASE4_REPORT_*`。
 
-1. 封存 V0.1 → 2. Sandbox 测试项目+诱饵 → 3. OpenCode 运行时验证 → 4. Codex 运行时验证 → 5. **Enforcement Gate**（workspace/network/credentials/privileged）→ 6. AgentWorker 抽象 → 7. OpenCodeWorker → 8. 长生命周期验证 → 9. CodexWorker → 10. WorkerManager → 11. 高风险审批链 → 12. 真实 Result → 13. Control Web 小升级
-
-判据：OpenCode+Codex 双 Worker 完整闭环；ALLOW/ASK/DENY 全验证；重启恢复；sandbox 越权实测全挡住；Result 不可变+用户 Review。
+进度（2026-08-28）：
+- ✅ 封存 V0.1 / Sandbox+诱饵 / Codex 运行时验证 / **Enforcement Gate 8/8 PASS** / AgentWorker 抽象 / **CodexWorker 端到端闭环（真实修复任务 5/5）** / Result 归一化 / Control Web 最小升级
+- ⚠️ OpenCodeWorker：协议验证已完成，适配器就绪；被上游 models.dev 目录自动刷新回归阻断（serve 会话模型解析失效，详见 PHASE4_REPORT_FINAL §三）
+- ⚠️ 遗留：codex fileChange accept 后续跑排查、真实 Worker 重启恢复实测、故障矩阵补测
+- 判据：最终报告结论 **READY_WITH_FIXES**（详见 PHASE4_REPORT_FINAL）
 
 ## 后续（Phase 4 完成后再启动）
 

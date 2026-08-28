@@ -22,6 +22,11 @@ const DEFAULTS = {
   outboxMaxAttempts: 5,
   outboxBackoffMs: [1000, 2000, 4000, 8000, 15000],
   logLevel: 'INFO',
+  workerDefaultWorkspace: '/home/huagosr/worker-sandbox-untrusted/calc',
+  workerAllowedRoots: ['/home/huagosr/worker-sandbox-untrusted', '/home/huagosr/worker-sandbox'],
+  workerTimeoutMs: 1800000,
+  workerProfileRoot: '',
+  workerDeepseekApiKeyFile: '/home/huagosr/.opencode/.env',
 };
 
 function load(file) {
@@ -33,6 +38,12 @@ function load(file) {
       throw new Error(`config invalid: ${e.message}`);
     }
   }
+  if (cfg.workerDeepseekApiKeyFile && fs.existsSync(cfg.workerDeepseekApiKeyFile)) {
+    const raw = fs.readFileSync(cfg.workerDeepseekApiKeyFile, 'utf8').split('\n')[0];
+    const idx = raw.indexOf('=');
+    if (idx > 0) cfg.workerDeepseekApiKey = raw.slice(idx + 1).trim();
+  }
+  if (process.env.HUB_WORKER_DEEPSEEK_API_KEY) cfg.workerDeepseekApiKey = process.env.HUB_WORKER_DEEPSEEK_API_KEY;
   if (process.env.HUB_PORT) cfg.port = parseInt(process.env.HUB_PORT, 10);
   if (process.env.HUB_HOST) cfg.host = process.env.HUB_HOST;
   if (process.env.HUB_DB_PATH) cfg.dbPath = process.env.HUB_DB_PATH;
