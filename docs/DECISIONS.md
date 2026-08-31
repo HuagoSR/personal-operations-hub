@@ -62,6 +62,30 @@
 - 内容：L4 High-risk Action 优先级高于 L2 ExecutionGrant，高于 L3 Worker 自动放行。即使 Grant 允许 run_commands/network，sudo、git push、破坏性删除、系统配置、凭据访问仍必须人工再次确认。Worker 工具级审批一律转发原生机制，Hub 不重写协议。
 - 理由：防止宽泛 Grant 意外覆盖高危操作；保留最小人工干预面。
 
+## D011 — 前端保持零构建 + 渐进增强；轻量库可 vendor
+
+- 状态：ACCEPTED（2026-08-30）
+- 内容：Control Web 维持 server-rendered HTML + CSS + ES modules + 渐进增强（no-build）；不引入 React/Vue 等大型前端体系。当卡片/动态状态/局部刷新使原生 JS 难以维护时，允许引入 htmx/Alpine 类轻量工具，但必须 vendor 到仓库本地（`web/vendor/`），生产运行不依赖公共 CDN。
+- 理由：当前问题是信息架构与交互模型，而非技术栈新旧；先重构交互模型，避免"旧模型套新框架"。
+
+## D012 — Global Hub 与 Hub Self Project 是两个独立实体与安全域
+
+- 状态：ACCEPTED（2026-08-30）
+- 内容：Global Hub = 跨项目的个人助手（不属于任何 Project），Hub Self Project = 管理 Hub 自身的系统项目（`project_type=SYSTEM_HUB`）。两者永不合并；权限模板完全不同。UI 上 Global Hub 显示为 Home/Assistant，Hub 专指 Self Project。
+- 理由：问"今天有什么事情"不应处于拥有 Hub 源码修改权限的特殊项目中；安全域必须分离。
+
+## D013 — 自我修改使用隔离开发工作区；生产 Hub 永不被原地编辑
+
+- 状态：ACCEPTED（2026-08-30）
+- 内容：Hub Self 开发流程 = 开发工作副本（sandbox 内）→ Codex 修改 → 测试 → Result/Diff → 用户 Review → [Prepare Update] → 用户手动 [Apply Update] → health check → 失败 rollback。Phase 6 只实现手动/半自动 apply；自动部署/自动回滚推迟。带外恢复路径（SSH + known-good tag + systemd + rollback 命令）是前置条件。
+- 理由：执行部署的系统恰好也是被部署的系统；Hub 挂掉时不能依赖 Hub 自身回滚。
+
+## D014 — Self 开发副本内 git_commit=ALLOW；push/deploy 保持显式批准
+
+- 状态：ACCEPTED（2026-08-30）
+- 内容：Hub Self development working copy 内，Codex 的 git commit = ALLOW（本地可逆、天然回滚点与审计边界；commit message 含 task id；commit hash 写入 Result）；git push、deploy、restart、生产 DB mutation 保持 ASK/HIGH_RISK。前提：仅限隔离副本、不得 commit 生产 checkout、不自动 push、hooks 禁用或审计、不得提交 credentials/runtime data。
+- 理由：commit 是本地可逆操作，与 push/deploy/sudo 的外部影响本质不同；commit 链反而让自我修改更安全可审。
+
 ---
 
 ## 记录格式说明

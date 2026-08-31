@@ -30,31 +30,71 @@ function badge(state) {
   return `<span class="badge ${colors[state] || 'bg-secondary'}">${esc(state)}</span>`;
 }
 
-function nav() {
-  return `<nav class="navbar navbar-expand navbar-dark bg-dark mb-3">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="/">Personal Hub V0.1</a>
-      <div class="navbar-nav">
-        <a class="nav-link" href="/index.html">Dashboard</a>
-        <a class="nav-link" href="/inbox.html">Inbox</a>
-        <a class="nav-link" href="/tasks.html">Tasks</a>
-        <a class="nav-link" href="/approvals.html">Approvals</a>
-        <a class="nav-link" href="/executions.html">Executions</a>
-        <a class="nav-link" href="/results.html">Results</a>
-        <a class="nav-link" href="/projects.html">Projects</a>
-        <a class="nav-link" href="/conversations.html">Conversations</a>
-      </div>
-    </div>
-  </nav>`;
+let navState = null;
+
+async function loadNavState() {
+  if (navState) return navState;
+  try {
+    const boot = await api('GET', '/api/bootstrap/status');
+    const projects = await api('GET', '/api/projects');
+    navState = { globalConversationId: boot.globalConversation.id, projects };
+  } catch (e) {
+    navState = { globalConversationId: null, projects: [] };
+  }
+  return navState;
 }
 
-function page(title) {
-  document.getElementById('nav').innerHTML = nav();
+function sidebarItem(href, key, label, active) {
+  return `<a class="sidebar-item ${active === key ? 'active' : ''}" data-nav="${key}" href="${href}">${label}</a>`;
+}
+
+async function nav(active) {
+  const s = await loadNavState();
+  const homeHref = s.globalConversationId ? `/conversation.html?id=${s.globalConversationId}` : '/conversations.html';
+  const hubProjects = s.projects.filter((p) => p.project_type === 'SYSTEM_HUB');
+  const userProjects = s.projects.filter((p) => p.project_type !== 'SYSTEM_HUB');
+  const projectLink = (p, badgeHtml) =>
+    sidebarItem(`/project.html?id=${p.id}`, 'projects', `${esc(p.name)} ${badgeHtml}`, active);
+  return `
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand"><a href="/">Personal Hub</a></div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">主界面</div>
+      ${sidebarItem(homeHref, 'home', 'Home（个人助手）', active)}
+      <div class="sidebar-section">项目</div>
+      ${hubProjects.map((p) => projectLink(p, '<span class="sidebar-tag">系统</span>')).join('')}
+      ${userProjects.map((p) => projectLink(p, '')).join('')}
+      ${sidebarItem('/projects.html', 'projects-admin', '管理项目', active)}
+      <div class="sidebar-section">工作台</div>
+      ${sidebarItem('/inbox.html', 'inbox', 'Inbox', active)}
+      ${sidebarItem('/tasks.html', 'tasks', 'Tasks', active)}
+      ${sidebarItem('/approvals.html', 'approvals', 'Approvals', active)}
+      ${sidebarItem('/executions.html', 'executions', 'Executions', active)}
+      ${sidebarItem('/results.html', 'results', 'Results', active)}
+      <div class="sidebar-section">系统</div>
+      ${sidebarItem('/conversations.html', 'conversations', 'Conversations', active)}
+    </nav>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="window.hub.toggleSidebar(false)"></div>
+  <button class="sidebar-toggle" aria-label="菜单" onclick="window.hub.toggleSidebar()">☰</button>`;
+}
+
+function toggleSidebar(force) {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebarBackdrop');
+  const open = force !== undefined ? force : !sb.classList.contains('open');
+  sb.classList.toggle('open', open);
+  bd.classList.toggle('show', open);
+}
+
+async function page(title, active, opts = {}) {
+  document.getElementById('nav').innerHTML = await nav(active);
   document.title = title;
+  if (opts.noAutoReload) return;
   setInterval(() => {
     const el = document.activeElement;
     const typing = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
-    if (!typing) location.reload();
+    if (!typing && !document.body.classList.contains('modal-open')) location.reload();
   }, 15000);
 }
 
@@ -104,6 +144,7 @@ function collectGrant(containerId) {
 }
 
 async function openApproveModal(candidateId, title) {
+  document.body.classList.add('modal-open');
   const html = `
   <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
     <div class="modal-dialog modal-lg">
@@ -145,7 +186,7 @@ async function openApproveModal(candidateId, title) {
   const projects = await api('GET', '/api/projects').catch(() => []);
   const sel = holder.querySelector('#approve-project');
   sel.innerHTML = '<option value="">（无）</option>' + projects.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  holder.querySelector('#approve-cancel').onclick = () => holder.remove();
+  holder.querySelector('#approve-cancel').onclick = () => { holder.remove(); document.body.classList.remove('modal-open'); };
   holder.querySelector('#approve-ok').onclick = async () => {
     try {
       const body = {
@@ -156,6 +197,7 @@ async function openApproveModal(candidateId, title) {
       };
       await api('POST', `/api/candidates/${candidateId}/approve`, body);
       holder.remove();
+      document.body.classList.remove('modal-open');
       location.reload();
     } catch (e) { formError(e); }
   };
@@ -165,4 +207,4 @@ function registerAutoReload() {
   page(document.title);
 }
 
-window.hub = { api, esc, badge, page, formError, grantEditor, collectGrant, openApproveModal, CAPS, SCENARIOS, registerAutoReload };
+window.hub = { api, esc, badge, page, formError, grantEditor, collectGrant, openApproveModal, toggleSidebar, CAPS, SCENARIOS, registerAutoReload };

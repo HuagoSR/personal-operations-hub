@@ -97,19 +97,24 @@ projects:
 - 日志隐私：chat/sender id 仅以 sha256 前 8 位出现；消息正文不进日志，只进 spool。
 - 秘密数据（token、微信 DB key、完整 wxid、二维码、聊天原文）不进 Git。
 
-## 9. ExecutionGrant Enforcement（Phase 4 进行中的独立 Gate）
+## 9. ExecutionGrant Enforcement（已落地 bwrap 8/8；Hub Self 专项见 §11）
 
 - ExecutionGrant 是**逻辑策略**，不等于 OS 安全边界。Worker 进程若运行在拥有整个 home 权限的 Unix 用户下，Grant 之外的数据（~/.ssh、~/.config、其他项目、secret）技术上仍可读。
-- **Gate 规则**：FakeWorker 阶段不需要 Enforcement（已过）；Phase 4 真实 Worker 接入期间，必须先完成设计+实测验证：
-  - workspace 隔离（只能碰授权项目；不可碰其他项目/Hub 数据/Gateway 数据/home 敏感区）
-  - network 限制（DENY 必须实测断网）
-  - credential 隔离（不继承 Hub secret/微信凭据/无关 SSH/API key；按任务按项目注入）
-  - 默认禁 sudo/系统配置/宿主机敏感目录
-- 实施手段（用户级优先，无需 sudo）：bwrap/unshare（宿主已有）；Worker native 权限配置（Codex execpolicy / OpenCode permission）按 Grant 生成；working-directory 隔离。若需系统级放行（如 sysctl userns），先输出 `USER_ACTION_REQUIRED` 请示。
-- 详见 `research/PHASE4_PLAN.md` 阶段五与 Phase 4 报告。
+- 已实现（Phase 4）：workspace 隔离、命令级硬断网（command-deny）、凭据隔离、sudo 屏蔽、/etc 只读——bwrap 用户级，无需 sudo。实测 8/8 PASS（`research/PHASE4_REPORT_ENFORCEMENT.md`）。
 
 ## 10. 现有系统边界（已实施）
 
-- 端口只绑 127.0.0.1（6174）；远程访问走 SSH Tunnel。
+- 端口只绑 127.0.0.1（6174 / 8300）；远程访问走 SSH Tunnel。
 - 不修改宿主机 SSH/防火墙/systemd 系统级配置（除非用户明确批准）。
-- 微信容器运行需 `SYS_PTRACE + seccomp=unconfined`（DB key 提取必需），风险已记录于 research/gateway-security-check.md。
+- 微信容器运行需 `SYS_PTRACE + seccomp=unconfined`（DB key 提取必需），风险已记录。
+
+## 11. Hub Self Project 安全模型（Phase 6，D012–D014）
+
+- Hub Self Project（`project_type=SYSTEM_HUB`）与 Global Hub 是两个**独立安全域**，永不合并。
+- 开发工作区：`~/worker-sandbox-untrusted/hub-dev/`（隔离副本）；生产 checkout 对 Worker 不可见。
+- 权限模板（系统默认，用户可收紧）：
+  - dev 副本内：read/write/run_tests/install_deps **ALLOW**；git_commit **ALLOW**（hooks 审计、不推远程、commit 含 task id、hash 入 Result）
+  - git_push / deploy / restart / 生产 DB mutation / Gateway 修改与重启：**ASK / HIGH_RISK**
+  - 微信容器/微信数据/credentials/~/.ssh/sudo/system_config：**DENY 永远**
+- 自我修改流程：副本修改 → 测试 → Result/Diff → 用户 Review → [Prepare Update] → 手动 [Apply Update]（备份→同步→重启→health check）→ 失败 rollback。
+- **带外恢复 SOP**（不依赖 Hub）：SSH + known-good tag + `scripts/rollback-hub.sh` + systemd 重启；自动部署评估前必须演练通过（`research/PHASE6_HUB_SELF_PROJECT_DESIGN.md` §12）。

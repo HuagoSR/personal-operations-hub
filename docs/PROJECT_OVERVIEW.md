@@ -19,21 +19,24 @@
 - 独立的 Trusted Control Channel（第一版 Web/PWA + Push）：对话、查看 Inbox、审批任务、回答 Worker 问题、查看结果；
 - 可扩展的信息源体系（微信 → Email/GitHub/Calendar/RSS…）。
 
-## 当前做到哪里（截至 2026-08-28）
+## 当前做到哪里（截至 2026-08-30）
 
 | 组件 | 状态 |
 |---|---|
-| 微信 Gateway（只读采集） | ✅ 运行中（systemd --user）；7 天 soak 测试进行中 |
-| Hub V0.1 | ✅ 完成：SQLite 状态机 + Outbox + FakeWorker + spool 摄入 + Control Web；26 测试 PASS + 24h 自测 PASS（tag `v0.1-known-good`） |
-| Phase 4 Real Worker Foundation | 🔄 接近完成：CodexWorker 端到端闭环 ✅（bwrap Enforcement 8/8、权限 ALLOW/ASK 链、真实修复任务）；OpenCodeWorker 被上游目录回归阻断（适配器就绪）；结论 READY_WITH_FIXES（`research/PHASE4_REPORT_FINAL.md`） |
-| Control Channel | ✅ Web 最小版；PWA+Push 未做（Phase 8） |
-| 通知 / 智能管线 / 多源 | ❌ 未开发（Phase 7/8/9） |
+| 微信 Gateway（只读采集） | ✅ 运行中（systemd --user）；7 天 soak 完成 |
+| Hub V0.1 | ✅ 完成：SQLite 状态机 + Outbox + FakeWorker + spool 摄入 + Control Web（tag `v0.1-known-good`） |
+| Real Worker Foundation | ✅ 完成（Codex 线全绿：bwrap Enforcement 8/8、权限链、真实修复任务；OpenCode 上游回归待解锁） |
+| Controlled Pilot（Gomoku） | ✅ 完成：10 PASS + 2 PASS_WITH_NOTES，结论 READY_FOR_REAL_PROJECT_READ_ONLY |
+| Control Web 重构（6A–6C） | ✅ 上线：Hub Self 系统项目与数据基础、侧边栏导航（Bootstrap vendor 化）、Conversation-first 时间线（卡片 + composer + 命令会话绑定 + 局部刷新），49 测试全绿 |
+| Hub Self 开发闭环（6E） | ⏳ 已设计（隔离副本+手动 apply+rollback SOP），未实施 |
+| UX 打磨（6F） | ⏳ 待做（独立会话负责 UI 完善） |
+| 通知 / 智能管线 / 多源 | ❌ 未开发（后续评估） |
 
-历史与调研：`research/`（GATEWAY_HISTORY / ARCHITECTURE_RESEARCH / HUB_V01_REPORT / worker-control-interfaces / human-approval-patterns / PHASE4_PLAN / soak 日报）。
+历史与调研：`research/`（GATEWAY_HISTORY / ARCHITECTURE_RESEARCH / HUB_V01_REPORT / worker-control-interfaces / human-approval-patterns / PHASE4_* / PHASE5_* / PHASE6_*）。
 
 ## 什么明确不是目标
 
 - 不是微信机器人（微信**永久只读**，永不发送）；
 - 不是万能编程 Agent（Hub 不替代 Codex/OpenCode，只调度它们）；
 - 不是即时执行系统（外部消息不能直接触发服务器操作）；
-- 当前阶段不做：LLM 智能管线、移动原生 App、通知系统/Push、PWA、多信息源（Phase 7/8/9）；Phase 4 内 Worker 只准操作 sandbox 测试项目。
+- 当前阶段不做：LLM 智能管线、移动原生 App、通知系统/Push、PWA、多信息源（Phase 6 之后评估）；Worker 只准操作沙箱隔离工作区（含 Hub Self 开发副本）。

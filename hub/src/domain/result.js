@@ -3,13 +3,14 @@
 function insertResult(db, r) {
   const res = db.prepare(`INSERT INTO results
     (execution_id, task_id, worker, summary, diff_json, tests_json, artifacts_json, evidence_json,
-     actor_type, actor_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+     facts_json, actor_type, actor_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(r.executionId, r.taskId, r.worker, r.summary,
       r.diff ? JSON.stringify(r.diff) : null,
       r.tests ? JSON.stringify(r.tests) : null,
       r.artifacts ? JSON.stringify(r.artifacts) : null,
       r.evidence ? JSON.stringify(r.evidence) : null,
+      r.facts ? JSON.stringify(r.facts) : null,
       r.actorType, r.actorId);
   return Number(res.lastInsertRowid);
 }

@@ -28,6 +28,7 @@ function dispatchOutboxEvent(db, ev, ctx) {
   tx(db, () => {
     const existing = findExecutionByDispatchId(db, payload.dispatchId);
     if (existing) return;
+    const taskRow = db.prepare('SELECT conversation_id FROM tasks WHERE id = ?').get(payload.taskId);
     const exId = insertExecution(db, {
       taskId: payload.taskId,
       grantId: payload.grantId,
@@ -36,10 +37,22 @@ function dispatchOutboxEvent(db, ev, ctx) {
       executionDispatchId: payload.dispatchId,
       timeoutMs: payload.timeoutMs,
       deadlineAt: payload.deadlineAt,
+      resumeFromExecution: payload.continueThreadId || null,
+      conversationId: taskRow ? taskRow.conversation_id : null,
     });
+    if (payload.continueThreadId) {
+      const parentProfile = db.prepare('SELECT * FROM worker_profiles WHERE execution_id = ?').get(payload.continueThreadId);
+      if (parentProfile) {
+        db.prepare(`INSERT OR REPLACE INTO worker_profiles
+          (execution_id, worker, profile_dir, home_dir, session_id, worker_port, worker_pid, task_prompt, network_mode, status, last_activity_at)
+          VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'PREPARED', ?)`)
+          .run(exId, parentProfile.worker, parentProfile.profile_dir, parentProfile.home_dir,
+            parentProfile.session_id, payload.prompt || null, parentProfile.network_mode, new Date().toISOString());
+      }
+    }
     appendDomainEvent(db, {
       eventType: 'EXECUTION_CREATED', entityType: 'execution', entityId: exId, actor: HUB_ACTOR,
-      payload: { dispatchId: payload.dispatchId, taskId: payload.taskId },
+      payload: { dispatchId: payload.dispatchId, taskId: payload.taskId, continueThreadId: payload.continueThreadId || null },
     });
   });
   markDispatched(db, ev.id, payload.dispatchId);

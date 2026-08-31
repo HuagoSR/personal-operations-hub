@@ -28,13 +28,22 @@ function json(res, status, body) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = '';
+    const chunks = [];
+    let size = 0;
     req.on('data', (c) => {
-      data += c;
-      if (data.length > 1024 * 1024) { reject(new HubError('BAD_REQUEST', 'body too large')); req.destroy(); }
+      size += c.length;
+      if (size > 1024 * 1024) { reject(new HubError('BAD_REQUEST', 'body too large')); req.destroy(); }
+      chunks.push(c);
     });
     req.on('end', () => {
-      if (!data) return resolve({});
+      if (!chunks.length) return resolve({});
+      let data;
+      try {
+        data = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks));
+      } catch (e) {
+        reject(new HubError('BAD_REQUEST', 'request body must be valid UTF-8'));
+        return;
+      }
       try { resolve(JSON.parse(data)); } catch (e) { reject(new HubError('BAD_REQUEST', 'invalid JSON body')); }
     });
     req.on('error', reject);
@@ -105,6 +114,10 @@ function createApiHandler(db, ctx) {
       if (root === 'executions') {
         if (method === 'GET' && !id) return json(res, 200, S.executionList(url.searchParams.get('state'))), true;
         if (method === 'GET' && id) return json(res, 200, S.executionDetail(Number(id))), true;
+        if (method === 'POST' && id && action === 'followup') {
+          const body = await readBody(req);
+          return json(res, 201, S.followupExecution(Number(id), body)), true;
+        }
         if (method === 'POST' && id && action === 'questions' && subId && subAction === 'answer') {
           const body = await readBody(req);
           return json(res, 200, S.answerQuestion(Number(id), Number(subId), body)), true;
@@ -133,11 +146,18 @@ function createApiHandler(db, ctx) {
         }
       }
 
+      if (root === 'bootstrap' && id === 'status' && method === 'GET') {
+        return json(res, 200, S.bootstrapStatus()), true;
+      }
+
       if (root === 'conversations') {
         if (method === 'GET' && !id) return json(res, 200, S.conversationList(url.searchParams.get('projectId'))), true;
         if (method === 'POST' && !id) {
           const body = await readBody(req);
           return json(res, 201, S.createConversation(body)), true;
+        }
+        if (method === 'GET' && id && action === 'timeline') {
+          return json(res, 200, S.conversationTimeline(Number(id))), true;
         }
         if (method === 'GET' && id && action === 'messages') {
           return json(res, 200, S.conversationMessages(Number(id), url.searchParams.get('afterId'))), true;

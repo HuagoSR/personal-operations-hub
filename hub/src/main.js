@@ -15,6 +15,13 @@ const dbPath = resolveDbPath(cfg, ROOT);
 const db = openDatabase(dbPath);
 migrate(db, path.join(__dirname, 'migrations'));
 
+try {
+  const boot = require('./services/bootstrap').ensureSystemEntities(db);
+  logger.info(`bootstrap ok globalConv=${boot.globalConversation.id} hubProject=${boot.hubProject.id} hubGeneral=${boot.hubGeneralConversation.id}`);
+} catch (e) {
+  logger.error(`bootstrap failed: ${e.stack || e.message}`);
+}
+
 const ctx = {
   cfg,
   logger,

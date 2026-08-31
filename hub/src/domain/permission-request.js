@@ -1,11 +1,17 @@
 'use strict';
 
-function insertPermissionRequest(db, { executionId, capability, grantValue, highRisk }) {
+function insertPermissionRequest(db, { executionId, capability, grantValue, highRisk, externalId }) {
   const res = db.prepare(`INSERT INTO permission_requests
-    (execution_id, capability, grant_value, high_risk)
-    VALUES (?, ?, ?, ?)`)
-    .run(executionId, capability, grantValue || null, highRisk ? 1 : 0);
+    (execution_id, capability, grant_value, high_risk, external_id)
+    VALUES (?, ?, ?, ?, ?)`)
+    .run(executionId, capability, grantValue || null, highRisk ? 1 : 0, externalId || null);
   return Number(res.lastInsertRowid);
+}
+
+function findPermissionRequestByExternal(db, executionId, externalId) {
+  if (!externalId) return null;
+  return db.prepare('SELECT * FROM permission_requests WHERE execution_id = ? AND external_id = ?')
+    .get(executionId, externalId) || null;
 }
 
 function findPermissionRequest(db, id) {
@@ -32,4 +38,4 @@ function decide(db, id, { decision, state, decidedByType, decidedById }) {
     .run(state, decision, decidedByType, decidedById, new Date().toISOString(), id);
 }
 
-module.exports = { insertPermissionRequest, findPermissionRequest, findOpenPermissionRequest, findLatestPermissionRequest, listPermissionRequests, decide };
+module.exports = { insertPermissionRequest, findPermissionRequest, findPermissionRequestByExternal, findOpenPermissionRequest, findLatestPermissionRequest, listPermissionRequests, decide };

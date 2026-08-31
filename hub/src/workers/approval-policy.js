@@ -5,7 +5,7 @@ const { appendDomainEvent } = require('../services/audit');
 const { ACTORS } = require('../domain/actors');
 const { EXECUTION_TRANSITIONS } = require('../domain/states');
 const { findExecution } = require('../domain/execution');
-const { insertPermissionRequest, findPermissionRequest, decide } = require('../domain/permission-request');
+const { insertPermissionRequest, findPermissionRequest, findPermissionRequestByExternal, decide } = require('../domain/permission-request');
 const { insertQuestion, findQuestion, markAnswered } = require('../domain/execution-question');
 const grantService = require('../services/grant-service');
 
@@ -14,16 +14,33 @@ const WORKER_ACTORS = {
   'codex': { actorType: ACTORS.FAKE_WORKER, actorId: 'codex-worker' },
 };
 
+const DEFAULT_WORKER_TIMEOUT_MS = 1800000;
+
+function pauseDeadline(db, executionId) {
+  db.prepare('UPDATE executions SET deadline_at = NULL WHERE id = ?').run(executionId);
+}
+
+function resumeDeadline(db, executionId) {
+  db.prepare('UPDATE executions SET deadline_at = ? WHERE id = ?')
+    .run(new Date(Date.now() + DEFAULT_WORKER_TIMEOUT_MS).toISOString(), executionId);
+}
+
 function workerActor(workerType) {
   return WORKER_ACTORS[workerType] || { actorType: ACTORS.FAKE_WORKER, actorId: workerType || 'worker' };
 }
 
-function decideWorkerPermission(db, { executionId, grant, capability, worker, metadata }) {
+function decideWorkerPermission(db, { executionId, grant, capability, worker, metadata, externalId }) {
   const actor = workerActor(worker);
-  const ev = grantService.evaluate(grant, capability);
   return tx(db, () => {
+    const existing = findPermissionRequestByExternal(db, executionId, externalId || null);
+    if (existing) {
+      if (existing.state === 'OPEN') return { decision: 'ASK_USER', permissionId: existing.id, reused: true };
+      if (existing.state === 'ALLOWED') return { decision: 'ALLOW', permissionId: existing.id, reused: true };
+      if (existing.state === 'DENIED') return { decision: 'DENY', permissionId: existing.id, reused: true };
+    }
+    const ev = grantService.evaluate(grant, capability);
     const permId = insertPermissionRequest(db, {
-      executionId, capability, grantValue: ev.grantValue, highRisk: ev.highRisk,
+      executionId, capability, grantValue: ev.grantValue, highRisk: ev.highRisk, externalId: externalId || null,
     });
     appendDomainEvent(db, {
       eventType: 'PERMISSION_REQUESTED', entityType: 'execution', entityId: executionId, actor,
@@ -37,6 +54,7 @@ function decideWorkerPermission(db, { executionId, grant, capability, worker, me
           from: 'RUNNING', to: 'WAITING_FOR_APPROVAL',
           transitions: EXECUTION_TRANSITIONS, version: execution.version, actor,
           reason: `permission request pending: ${capability}`,
+          set: [['deadline_at = NULL']],
         });
       }
       return { decision: 'ASK_USER', permissionId: permId };
@@ -71,6 +89,7 @@ function workerAsksQuestion(db, { executionId, question, worker, externalId }) {
         from: 'RUNNING', to: 'WAITING_FOR_USER',
         transitions: EXECUTION_TRANSITIONS, version: execution.version, actor,
         reason: 'worker asked a question',
+        set: [['deadline_at = NULL']],
       });
     }
     appendDomainEvent(db, {
@@ -94,6 +113,7 @@ function answerWorkerQuestion(db, { executionId, questionId, answer, actor }) {
       from: 'WAITING_FOR_USER', to: 'RUNNING',
       transitions: EXECUTION_TRANSITIONS, version: execution.version, actor,
       reason: 'user answered worker question',
+      set: [['deadline_at = ?', new Date(Date.now() + DEFAULT_WORKER_TIMEOUT_MS).toISOString()]],
     });
     appendDomainEvent(db, {
       eventType: 'QUESTION_ANSWERED', entityType: 'execution', entityId: executionId, actor,
@@ -122,6 +142,7 @@ function userDecidesPermission(db, { executionId, permissionId, decision, actor,
       from: 'WAITING_FOR_APPROVAL', to: 'RUNNING',
       transitions: EXECUTION_TRANSITIONS, version: execution.version, actor,
       reason: `permission ${decision}`,
+      set: [['deadline_at = ?', new Date(Date.now() + DEFAULT_WORKER_TIMEOUT_MS).toISOString()]],
     });
     appendDomainEvent(db, {
       eventType: 'PERMISSION_DECIDED', entityType: 'execution', entityId: executionId, actor,

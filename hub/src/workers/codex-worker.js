@@ -63,12 +63,21 @@ class CodexWorkerSession {
       fs.copyFileSync(path.join(hostCodex, 'auth.json'), path.join(sandboxCodex, 'auth.json'));
       fs.chmodSync(path.join(sandboxCodex, 'auth.json'), 0o600);
     }
-    fs.writeFileSync(path.join(sandboxCodex, 'config.toml'), '');
+    const model = (this.ctx.cfg && this.ctx.cfg.workerCodexModel) || 'gpt-5.6-luna';
+    fs.writeFileSync(path.join(sandboxCodex, 'config.toml'), `model = "${model}"\n`);
     this.codexHome = sandboxCodex;
   }
 
   async ensureServer() {
-    if (this.child && this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    if (this.child && this.child.exitCode !== null) {
+      this.child = null;
+      this.ws = null;
+    }
+    if (this.child) {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+      try { await this.connectWs(); } catch (e) { if (this.ctx.logger) this.ctx.logger.warn(`cx-worker[${this.execution.id}] ws reconnect failed: ${e.message}`); }
+      return;
+    }
     this.prepareProfile();
     this.port = await freePort();
     const network = grantToSandbox(this.grant, this.profile.workspace).networkMode;
@@ -77,7 +86,10 @@ class CodexWorkerSession {
         workspace: this.profile.workspace,
         homeDir: this.profile.home_dir,
         network,
-        env: ['CODEX_HOME=' + this.codexHome],
+        env: [
+          'CODEX_HOME=' + this.codexHome,
+          'PATH=' + this.profile.workspace + '/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+        ],
       },
       ['/usr/bin/codex', 'app-server', '--listen', `ws://127.0.0.1:${this.port}`],
       { stdio: ['ignore', 'pipe', 'pipe'] }
@@ -85,6 +97,7 @@ class CodexWorkerSession {
     child.stdout.on('data', (d) => { if (this.ctx.logger) this.ctx.logger.debug(`cx-worker[${this.execution.id}] ${d.toString().slice(0, 200)}`); });
     child.stderr.on('data', (d) => { if (this.ctx.logger) this.ctx.logger.debug(`cx-worker[${this.execution.id}] ${d.toString().slice(0, 200)}`); });
     child.on('exit', (code) => {
+      if (this.ctx.logger) this.ctx.logger.info(`cx-worker[${this.execution.id}] app-server exited code=${code}`);
       if (!this.done && !this.failed) this.failed = `codex app-server exited code=${code}`;
       this.ws = null;
     });
@@ -106,6 +119,7 @@ class CodexWorkerSession {
   connectWs() {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${this.port}`);
+      const settled = { done: false };
       ws.onopen = async () => {
         this.ws = ws;
         try {
@@ -114,12 +128,19 @@ class CodexWorkerSession {
             capabilities: { experimentalApi: true },
           });
           this.send('initialized', {}, true);
-          resolve();
-        } catch (e) { reject(e); }
+          if (!settled.done) { settled.done = true; resolve(); }
+        } catch (e) { if (!settled.done) { settled.done = true; reject(e); } }
       };
       ws.onmessage = (ev) => this.onMessage(JSON.parse(ev.data));
-      ws.onerror = (e) => { if (!this.done) this.failed = 'codex ws error'; reject(new Error('ws error')); };
-      ws.onclose = () => { this.ws = null; };
+      ws.onerror = () => { if (this.ctx.logger) this.ctx.logger.warn(`cx-worker[${this.execution.id}] ws error`); };
+      ws.onclose = () => {
+        if (this.ctx.logger) this.ctx.logger.warn(`cx-worker[${this.execution.id}] ws closed`);
+        this.wsClosedAt = Date.now();
+        this.ws = null;
+        if (this.pendingApproval) {
+          this.failed = this.failed || 'approval channel lost: worker connection closed while waiting for approval';
+        }
+      };
     });
   }
 
@@ -172,20 +193,47 @@ class CodexWorkerSession {
     }
   }
 
-  async startTask(task, prompt) {
-    this.task = task;
-    await this.ensureServer();
-    const th = await this.rpc('thread/start', { cwd: this.profile.workspace, title: `hub-exec-${this.execution.id}` });
-    this.threadId = th.result.thread.id;
-    this.profile.session_id = this.threadId;
+  async startTurnOnThread(prompt, prefix, needResume) {
+    if (needResume) {
+      await this.rpc('thread/resume', { threadId: this.threadId });
+      const rd = await this.rpc('thread/read', { threadId: this.threadId, includeTurns: true });
+      const turns = (rd.result.thread && rd.result.thread.turns) || [];
+      for (const t of turns) {
+        if (t.status === 'inProgress') {
+          try { await this.rpc('turn/interrupt', { threadId: this.threadId, turnId: t.id }, 8000); } catch (e) { }
+        }
+      }
+    }
     const { sandboxPolicy, approvalPolicy } = grantToSandbox(this.grant, this.profile.workspace);
     await this.rpc('turn/start', {
       threadId: this.threadId,
-      input: [{ type: 'text', text: prompt }],
+      input: [{ type: 'text', text: prefix ? `${prefix}${prompt}` : prompt }],
       approvalPolicy,
       sandboxPolicy,
     });
     this.promptSentAt = Date.now();
+  }
+
+  async startTask(task, prompt) {
+    this.task = task;
+    await this.ensureServer();
+    if (this.profile.session_id) {
+      this.threadId = this.profile.session_id;
+      await this.startTurnOnThread(prompt, null, true);
+      return;
+    }
+    const th = await this.rpc('thread/start', { cwd: this.profile.workspace, title: `hub-exec-${this.execution.id}` });
+    this.threadId = th.result.thread.id;
+    this.profile.session_id = this.threadId;
+    await this.startTurnOnThread(prompt, null, false);
+  }
+
+  async resumeTask(task, prompt) {
+    this.task = task;
+    await this.ensureServer();
+    this.threadId = this.profile.session_id;
+    if (!this.threadId) throw new Error('no persisted thread id to resume');
+    await this.startTurnOnThread(prompt, '请继续完成之前的任务：', true);
   }
 
   async pump() {
@@ -204,6 +252,7 @@ class CodexWorkerSession {
 
   async handleServerRequest(req) {
     const m = req.method;
+    if (this.ctx.logger) this.ctx.logger.info(`cx-worker[${this.execution.id}] server request ${m} id=${req.id}`);
     if (m === 'item/commandExecution/requestApproval') {
       const p = req.params || {};
       const needsNetwork = !!(p.additionalPermissions && p.additionalPermissions.network && p.additionalPermissions.network.enabled);
@@ -214,6 +263,7 @@ class CodexWorkerSession {
         capability,
         worker: WORKER_TYPE,
         metadata: { externalId: req.id, command: p.command, reason: p.reason },
+        externalId: `cx:${p.itemId || req.id}`,
       });
       if (res.decision === 'ASK_USER') {
         this.pendingApproval = req;
@@ -221,12 +271,14 @@ class CodexWorkerSession {
       }
       this.replyServerRequest(req, res.decision === 'ALLOW' ? 'accept' : 'decline');
     } else if (m === 'item/fileChange/requestApproval') {
+      const p = req.params || {};
       const res = decideWorkerPermission(this.db, {
         executionId: this.execution.id,
         grant: this.grant,
         capability: 'write_project',
         worker: WORKER_TYPE,
-        metadata: { externalId: req.id, changes: (req.params || {}).itemId },
+        metadata: { externalId: req.id, changes: p.itemId },
+        externalId: `cx:${p.itemId || req.id}`,
       });
       if (res.decision === 'ASK_USER') {
         this.pendingApproval = req;
@@ -250,12 +302,21 @@ class CodexWorkerSession {
   replyServerRequest(req, decision) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ id: req.id, result: { decision } }));
+      if (this.ctx.logger) this.ctx.logger.info(`cx-worker[${this.execution.id}] replied decision=${decision} to ${req.method} id=${req.id}`);
+      return true;
     }
+    if (this.ctx.logger) this.ctx.logger.warn(`cx-worker[${this.execution.id}] reply dropped (ws closed) for ${req.method} id=${req.id}`);
+    return false;
   }
 
   async respondToApproval(decision) {
+    if (this.ctx.logger) this.ctx.logger.info(`cx-worker[${this.execution.id}] respondToApproval(${decision}) pendingApproval=${this.pendingApproval ? 'set' : 'null'} ws=${this.ws ? this.ws.readyState : 'null'}`);
     if (!this.pendingApproval) return { error: 'NOT_FOUND' };
-    this.replyServerRequest(this.pendingApproval, decision === 'allow' ? 'accept' : 'decline');
+    const sent = this.replyServerRequest(this.pendingApproval, decision === 'allow' ? 'accept' : 'decline');
+    if (!sent) {
+      this.failed = this.failed || 'approval channel lost: cannot deliver decision to worker';
+      return { error: 'CHANNEL_LOST' };
+    }
     this.pendingApproval = null;
     return { ok: true };
   }
@@ -290,6 +351,18 @@ class CodexWorkerSession {
       };
       tests = [{ name: 'worker-tests', status: (get('fail') || 0) === 0 ? 'pass' : 'fail', pass: get('pass'), fail: get('fail'), total: get('tests') }];
     }
+    const changedItems = fileChanges.flatMap((c) => (c.changes || []).filter((x) => x.path || x.oldPath));
+    const diffLines = (diff || '').split('\n');
+    const facts = {
+      changedFiles: changedItems.slice(0, 200).map((x) => ({ path: x.path || null, kind: x.kind || null })),
+      diffStat: {
+        files: changedItems.length,
+        additions: diffLines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length,
+        deletions: diffLines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length,
+      },
+      testsRun: tests ? tests[0] : null,
+      commitHash: null,
+    };
     return {
       summary: this.finalAnswer || '(no final answer)',
       diff,
@@ -302,6 +375,7 @@ class CodexWorkerSession {
         fileChanges: fileChanges.length,
         commands: commands.length,
       },
+      facts,
     };
   }
 }

@@ -19,7 +19,7 @@ const { insertTask, findTask } = require('../domain/task');
 const { insertGrant } = require('../domain/execution-grant');
 const { appendOutbox } = require('../domain/outbox-event');
 const { findUserCommand, markConverted } = require('../domain/user-command');
-const { findOrCreateGlobalConversation, insertMessage } = require('../domain/conversation');
+const { findOrCreateGlobalConversation, findConversation, insertMessage } = require('../domain/conversation');
 const { actor } = require('../domain/actors');
 
 function insertCandidateWithApproval(db, { originType, originId, title, description, projectId, sourceEventId, reason, creator, ttlMs }) {
@@ -123,7 +123,7 @@ function rejectCandidate(db, { candidateId, actor: decider, reason }) {
 
 function approveCandidate(db, {
   candidateId, actor: decider, title, description, projectId, capabilities, scenario,
-  worker = 'fake-worker', timeoutMs, cfg,
+  worker = 'fake-worker', timeoutMs, workspace, cfg,
 }) {
   const c = findCandidate(db, candidateId);
   if (!c) throw new NotFoundError('candidate', candidateId);
@@ -136,6 +136,8 @@ function approveCandidate(db, {
   if (!SCENARIOS.includes(scenario)) throw new BadRequestError(`unknown scenario ${scenario}`);
   if (!['fake-worker', 'opencode', 'codex'].includes(worker)) throw new BadRequestError(`unknown worker ${worker}`);
   const caps = Object.assign({}, DEFAULT_CAPABILITIES, capabilities || {});
+  const cmdRow = db.prepare('SELECT conversation_id FROM user_commands WHERE candidate_id = ? LIMIT 1').get(candidateId);
+  const conversationId = cmdRow ? cmdRow.conversation_id : null;
 
   return tx(db, () => {
     applyTransition(db, {
@@ -150,7 +152,7 @@ function approveCandidate(db, {
     });
     const taskId = insertTask(db, {
       candidateId, title: title || c.title, description: description || c.description,
-      projectId: projectId || c.project_id,
+      projectId: projectId || c.project_id, conversationId,
     });
     appendTransition(db, {
       entityType: 'task', entityId: taskId, fromState: null, toState: 'OPEN', actor: decider, reason: 'task created',
@@ -158,7 +160,7 @@ function approveCandidate(db, {
     const taskRow = findTask(db, taskId);
     const grantId = insertGrant(db, {
       taskId, taskVersion: taskRow.version, worker,
-      workspace: null, capabilities: caps,
+      workspace: workspace || null, capabilities: caps,
       issuedByType: decider.actorType, issuedById: decider.actorId,
     });
     appendDomainEvent(db, {
@@ -179,7 +181,7 @@ function approveCandidate(db, {
       eventType: 'TASK_CANDIDATE_APPROVED', entityType: 'candidate', entityId: candidateId, actor: decider,
       payload: { taskId, grantId, dispatchId: dspId },
     });
-    const conv = findOrCreateGlobalConversation(db);
+    const conv = conversationId ? findConversation(db, conversationId) : findOrCreateGlobalConversation(db);
     insertMessage(db, {
       conversationId: conv.id, role: 'SYSTEM', kind: 'STATUS',
       content: `任务 #${taskId} 已批准，已派发 FakeWorker 执行（场景 ${scenario}）`,

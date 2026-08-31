@@ -8,8 +8,8 @@ Sources（微信 → 未来 Email/GitHub/Calendar）
 Hub Core（Event / Inbox / TaskCandidate / Approval / ExecutionGrant / Outbox / 审计）
   ↓
 Worker Manager
-  ├── OpenCodeWorker
-  └── CodexWorker
+  ├── OpenCodeWorker（适配器就绪，上游目录回归待解锁）
+  └── CodexWorker（端到端已验证）
   ↓
 Sandbox / 项目（受 ExecutionGrant + Enforcement 约束）
 ```
@@ -21,12 +21,14 @@ Sandbox / 项目（受 ExecutionGrant + Enforcement 约束）
 | `gateway/` | 微信只读 Gateway：官方微信容器 → agent-wechat → 只读采集（GET-only，2s 轮询 + cursor + 按日 spool） |
 | `hub/` | Hub Core：SQLite 业务状态机 + 事务 Outbox + 幂等 Dispatcher + Control Web（Node.js 零依赖） |
 | `deploy/` | agent-wechat Docker 编排（127.0.0.1:6174） |
-| `docs/` `research/` | 架构 / 决策 / 可靠性模型 / 历史与调研 |
+| `docs/` `research/` | 架构 / 决策 / 可靠性模型 / 历史与调研（阶段报告不上 GitHub，见 `research/` 于 VPS） |
 
 ## 当前状态
 
-- Gateway 与 Hub V0.1 已运行并验证（26 项测试 + 24h 自测通过）
-- Phase 4（Real Worker Foundation：OpenCode/Codex + Enforcement）进行中，见 `research/PHASE4_PLAN.md`
+- Gateway（7 天 soak 通过）与 Hub 核心长期运行中（systemd --user）
+- 真实 Worker：Codex 线端到端闭环（bwrap Enforcement 8/8、权限链、真实修复任务）；Gomoku 受控试点 10 PASS + 2 PASS_WITH_NOTES
+- Control Web：侧边栏导航（资源本地 vendor 化）+ Conversation-first 时间线（消息/任务/执行/结果/审批卡片、composer、命令会话绑定、局部刷新）+ Hub Self 系统项目
+- 测试：49 项全绿（`cd hub && npm test`）
 - 尚无：LLM 智能管线、Push、多信息源
 
 ## 关键原则
@@ -43,10 +45,10 @@ Sandbox / 项目（受 ExecutionGrant + Enforcement 约束）
 # VPS 上（系统化部署细节见 hub/README.md）
 systemctl --user start wechat-gateway
 systemctl --user start personal-hub
-# Control Web：http://127.0.0.1:8300（经 SSH Tunnel 访问）
+# Control Web：http://127.0.0.1:8300（经 SSH Tunnel 访问：ssh -L 8300:127.0.0.1:8300 huago-cone）
 ```
 
 ## 注意
 
 - 仓库不含任何真实数据/凭据：Gateway spool、Hub 数据库、token 均在 `.gitignore`
-- 当前 Worker 只准操作专用 sandbox 项目，不碰真实项目
+- Worker 只准操作专用 sandbox（含 Hub Self 隔离开发副本），不碰真实项目

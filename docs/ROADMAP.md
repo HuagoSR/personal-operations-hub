@@ -5,27 +5,27 @@
 ## 已完成
 
 - **Phase 0** 微信 Gateway 可行性验证 → DONE（2026-08-24，`research/GATEWAY_HISTORY.md`）
-- **Phase 1** Gateway 7 天 soak → 进行中（2026-08-25 起，日报告 `research/soak/`，勿干扰）
-- **Phase 2** Hub 架构研究 → DONE（2026-08-25，`research/ARCHITECTURE_RESEARCH.md`）
-- **Phase 3–7（合并）** Hub V0.1：数据模型+状态机+outbox+dispatcher+FakeWorker+spool 摄入+Control Web → DONE（2026-08-27，26 测试 PASS + 24h 自测 PASS，`research/HUB_V01_REPORT.md`，tag `v0.1-known-good`）
+- **Phase 1** Gateway 7 天 soak → 完成（日报告 `research/soak/`）
+- **Phase 2** Hub 架构研究 → DONE（`research/ARCHITECTURE_RESEARCH.md`）
+- **Phase 3–7（合并）** Hub V0.1 → DONE（`research/HUB_V01_REPORT.md`，tag `v0.1-known-good`）
+- **Phase 4** Real Worker Foundation → DONE（Codex 线全绿；OpenCode 上游回归待解锁；`research/PHASE4_REPORT_FINAL.md`）
+- **Phase 5** Controlled Real Project Pilot（Gomoku）→ DONE（10 PASS + 2 PASS_WITH_NOTES，结论 READY_FOR_REAL_PROJECT_READ_ONLY；`research/PHASE5_GOMOK_FINAL_REPORT.md`）
 
-## Phase 4 — Real Worker Foundation（进行中，接近完成）
+## Control Web & Hub Self Project（6A–6C 已上线；6E/6F 进行中）
 
-用真正 OpenCode/Codex Worker 替换 FakeWorker。计划见 `research/PHASE4_PLAN.md`，各阶段报告见 `research/PHASE4_REPORT_*`。
+把可靠工作的 Hub 从"工程验证界面"变成长期日常使用的 Personal Operations Hub；加入系统内建 Hub Self Project。设计与调研见 `research/PHASE6_PRODUCT_MODEL.md`、`PHASE6_HUB_SELF_PROJECT_DESIGN.md`、`PHASE6_PLAN.md`、`PHASE6C_UI_STUDY.md`。
 
-进度（2026-08-28）：
-- ✅ 封存 V0.1 / Sandbox+诱饵 / Codex 运行时验证 / **Enforcement Gate 8/8 PASS** / AgentWorker 抽象 / **CodexWorker 端到端闭环（真实修复任务 5/5）** / Result 归一化 / Control Web 最小升级
-- ⚠️ OpenCodeWorker：协议验证已完成，适配器就绪；被上游 models.dev 目录自动刷新回归阻断（serve 会话模型解析失效，详见 PHASE4_REPORT_FINAL §三）
-- ⚠️ 遗留：codex fileChange accept 后续跑排查、真实 Worker 重启恢复实测、故障矩阵补测
-- 判据：最终报告结论 **READY_WITH_FIXES**（详见 PHASE4_REPORT_FINAL）
+- ✅ 6A 数据/产品基础（Project/Conversation 正式化、Hub Project bootstrap、Result 结构化事实、timeline API、GLOBAL_HUB 唯一修复）
+- ✅ 6B 导航与 Project 工作区（Bootstrap vendor 化、侧边栏、Project 页会话优先）
+- ✅ 6C Conversation-first 工作流（时间线卡片、composer、命令会话绑定、局部刷新）
+- ⏳ 6E Hub Self 开发（隔离副本 + 手动/半自动 apply + rollback SOP；仅设计）
+- ⏳ 6F UX 打磨（独立会话负责 UI 完善：响应式、加载态、增量拉取等）
 
-## 后续（Phase 4 完成后再启动）
+判据：用户主要围绕 Project/Conversation 使用 Hub；后台可靠状态机/审批/审计/安全边界全部保持；Hub Self Project 可安全地在隔离工作区完成"修改→测试→审阅→手动 apply"闭环。
 
-- **Phase 5** Controlled Real Project Pilot：只选一个低风险复制仓库，read-only → write/tests/commit → 最后才 push/系统操作
-- **Phase 6** Project/Conversation UX（Dashboard→Project→多会话→Hub+Worker 交互）
-- **Phase 7** Hub Intelligence（LLM/上下文/任务检测；LangGraph 如需引入走 PROPOSED CHANGE）
-- **Phase 8** Push/PWA
-- **Phase 9** GitHub/Email/Calendar Sources
+## 后续（Phase 6 完成后评估，不自行提前）
+
+Real Project Read-only Pilot → Real Project Write Pilot → Hub Intelligence → Push/PWA → 多信息源（Email/GitHub/Calendar）→ OpenCode re-enable
 
 ## 阶段推进规则
 

@@ -1,17 +1,23 @@
 'use strict';
 const { tx } = require('./tx');
-const { BadRequestError } = require('../domain/errors');
+const { BadRequestError, NotFoundError } = require('../domain/errors');
 const { insertUserCommand, findUserCommand, markConverted } = require('../domain/user-command');
-const { findOrCreateGlobalConversation, insertMessage } = require('../domain/conversation');
+const { findOrCreateGlobalConversation, findConversation, insertMessage } = require('../domain/conversation');
 const { insertCandidateWithApproval } = require('./candidate-service');
 
-function createUserCommand(db, { text, projectId, actor: creator, ttlMs }) {
+function createUserCommand(db, { text, projectId, conversationId, actor: creator, ttlMs }) {
   if (!text || !String(text).trim()) throw new BadRequestError('command text is required');
   return tx(db, () => {
-    const conv = findOrCreateGlobalConversation(db);
+    let conv = null;
+    if (conversationId !== undefined && conversationId !== null) {
+      conv = findConversation(db, conversationId);
+      if (!conv) throw new NotFoundError('conversation', conversationId);
+    }
+    if (!conv) conv = findOrCreateGlobalConversation(db);
+    const effectiveProjectId = projectId || conv.project_id || null;
     const cmdId = insertUserCommand(db, {
       conversationId: conv.id, text: String(text).trim(),
-      projectId: projectId || null, actorType: creator.actorType, actorId: creator.actorId,
+      projectId: effectiveProjectId, actorType: creator.actorType, actorId: creator.actorId,
     });
     insertMessage(db, {
       conversationId: conv.id, role: 'USER', kind: 'USER_COMMAND', content: String(text).trim(),
@@ -21,7 +27,7 @@ function createUserCommand(db, { text, projectId, actor: creator, ttlMs }) {
       originType: 'USER_COMMAND', originId: `cmd-${cmdId}`,
       title: String(text).trim().length > 80 ? String(text).trim().slice(0, 80) + '…' : String(text).trim(),
       description: String(text).trim(),
-      projectId: projectId || null,
+      projectId: effectiveProjectId,
       reason: 'created from user command',
       creator,
       ttlMs,

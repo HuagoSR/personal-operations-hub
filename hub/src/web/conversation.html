@@ -4,72 +4,262 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Conversation</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
-  <div class="container">
-    <h4 id="title">Conversation</h4>
-    <div id="messages" style="max-height:60vh;overflow:auto"></div>
-    <form class="mt-2" onsubmit="return sendCommand(event)">
-      <div class="input-group">
-        <input class="form-control" name="cmd" placeholder="输入 UserCommand（如：检查 gomoku-ai 的测试）→ 生成任务候选">
-        <button class="btn btn-primary">发送为任务候选</button>
+  <div class="container d-flex flex-column" style="max-height:calc(100vh - 2rem)">
+    <div class="d-flex justify-content-between align-items-center mt-2">
+      <h4 id="title" class="mb-0">Conversation</h4>
+      <div id="meta"></div>
+    </div>
+    <div id="timeline" class="flex-grow-1 overflow-auto border rounded bg-white p-3" style="min-height:300px"></div>
+    <form class="mt-2" onsubmit="return sendComposer(event)">
+      <div class="d-flex align-items-end gap-2">
+        <textarea class="form-control" id="composer" rows="2" placeholder="输入指令（Enter 发送生成任务候选；Shift+Enter 换行）"></textarea>
+        <button class="btn btn-primary">发送</button>
       </div>
-    </form>
-    <form class="mt-2" onsubmit="return sendMsg(event)">
-      <div class="input-group">
-        <input class="form-control" name="msg" placeholder="普通消息（仅记录，不生成任务）">
-        <button class="btn btn-outline-secondary">发送消息</button>
+      <div class="form-check form-check-inline mt-1">
+        <input class="form-check-input" type="checkbox" id="plain-mode">
+        <label class="form-check-label small text-muted" for="plain-mode">仅记录为消息（不生成任务候选）</label>
       </div>
     </form>
   </div>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Conversation');
-    (async () => {
-      const id = new URLSearchParams(location.search).get('id');
-      const d = await window.hub.api('GET', `/api/conversations/${id}/messages`);
-      document.getElementById('title').textContent = d.conversation.title || 'Conversation #' + d.conversation.id;
-      render(d.messages);
-      async function render(msgs) {
-        document.getElementById('messages').innerHTML = msgs.map((m) => {
-          const roleClass = m.role === 'USER' ? 'msg-user' : (m.role === 'WORKER' ? 'msg-worker' : 'msg-system');
-          return `<div class="msg-bubble ${roleClass}">
-            <div class="small text-muted">${window.hub.esc(m.role)} · ${window.hub.esc(m.kind)} · ${window.hub.esc(m.created_at)}</div>
-            <div>${window.hub.esc(m.content)}</div>
-          </div>`;
-        }).join('') || '<div class="text-muted">暂无消息</div>';
-        const box = document.getElementById('messages');
-        box.scrollTop = box.scrollHeight;
+    'use strict';
+    const convId = new URLSearchParams(location.search).get('id');
+    let lastItems = null;
+
+    const H = window.hub;
+
+    function factsBlock(facts) {
+      if (!facts) return '';
+      const rows = [];
+      if (facts.testsRun) {
+        const t = facts.testsRun;
+        rows.push(`<span class="badge ${t.status === 'pass' ? 'bg-success' : 'bg-danger'}">Tests: ${H.esc(t.status)}${t.total !== undefined ? ` (${t.total})` : ''}${t.pass !== undefined ? ` pass ${t.pass}` : ''}${t.fail !== undefined ? ` fail ${t.fail}` : ''}</span>`);
       }
-      window.sendCommand = async (ev) => {
+      if (facts.diffStat) {
+        const d = facts.diffStat;
+        rows.push(`<span class="badge bg-secondary">变更 ${d.files} 文件 +${d.additions} -${d.deletions}</span>`);
+      }
+      if (facts.changedFiles && facts.changedFiles.length) {
+        rows.push(`<span class="badge bg-secondary">文件: ${H.esc(facts.changedFiles.map((f) => f.path).join(', ').slice(0, 120))}</span>`);
+      }
+      if (facts.commitHash) {
+        rows.push(`<span class="badge bg-dark">commit ${H.esc(String(facts.commitHash).slice(0, 12))}</span>`);
+      }
+      return rows.length ? `<div class="mt-1">${rows.join(' ')}</div>` : '';
+    }
+
+    function messageItem(m) {
+      if (m.role === 'USER') {
+        return `<div class="d-flex justify-content-end mb-2"><div class="msg-bubble msg-user" style="max-width:75%">
+          <div class="small text-muted">你 · ${H.esc(m.kind)} · ${H.esc(m.created_at)}</div>
+          <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+        </div></div>`;
+      }
+      if (m.role === 'WORKER') {
+        return `<div class="d-flex justify-content-start mb-2"><div class="msg-bubble msg-worker" style="max-width:85%">
+          <div class="small text-muted">Worker · ${H.esc(m.created_at)}</div>
+          <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+        </div></div>`;
+      }
+      return `<div class="text-center mb-2"><div class="msg-bubble msg-system d-inline-block" style="max-width:85%">
+        <div class="small text-muted">${H.esc(m.kind)} · ${H.esc(m.created_at)}</div>
+        <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+      </div></div>`;
+    }
+
+    function taskItem(t) {
+      const actions = [];
+      if (!['COMPLETED', 'CANCELLED'].includes(t.state)) {
+        actions.push(`<button class="btn btn-sm btn-outline-danger" onclick="window.hubConv.cancelTask(${t.id})">取消</button>`);
+      }
+      if (['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(t.state)) {
+        actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherRun(${t.id})">再次执行</button>`);
+      }
+      return `<div class="card mb-2 border-start border-4 border-primary">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div><span class="badge bg-dark">任务 #${t.id}</span> <strong>${H.esc(t.title)}</strong> ${H.badge(t.state)}</div>
+            <div>${actions.join(' ')}</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function executionItem(e, questions, permissions) {
+      const openQs = questions.filter((q) => q.execution_id === e.id && q.state === 'OPEN');
+      const openPs = permissions.filter((p) => p.execution_id === e.id && p.state === 'OPEN');
+      return `<div class="card mb-2">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <span class="badge bg-dark">执行 #${e.id}</span>
+              <span class="text-muted small">${H.esc(e.worker)} · ${H.esc(e.scenario)} · attempt ${e.attempt}</span>
+              ${H.badge(e.state)}
+            </div>
+            <span class="text-muted small">${e.started_at ? H.esc(e.started_at) : ''}</span>
+          </div>
+          ${e.error ? `<div class="text-danger small mt-1">${H.esc(e.error)}</div>` : ''}
+          ${openQs.map((q) => `
+            <div class="mt-2 p-2 border rounded bg-light">
+              <span class="badge bg-warning">Worker 提问</span>
+              <div class="mt-1">${H.esc(q.question)}</div>
+              <form class="d-flex gap-1 mt-1" onsubmit="return window.hubConv.answer(event, ${e.id}, ${q.id})">
+                <input class="form-control form-control-sm" name="a" placeholder="回答">
+                <button class="btn btn-sm btn-primary">回答</button>
+              </form>
+            </div>`).join('')}
+          ${openPs.map((p) => `
+            <div class="mt-2 p-2 border rounded bg-light">
+              <span class="badge bg-warning">权限请求</span> ${H.esc(p.capability)}
+              ${p.high_risk ? '<span class="badge bg-danger">高风险</span>' : ''}
+              <button class="btn btn-sm btn-success ms-2" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'allow')">允许</button>
+              <button class="btn btn-sm btn-danger" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'deny')">拒绝</button>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    function resultItem(r) {
+      const facts = r.facts_json ? JSON.parse(r.facts_json) : null;
+      const actions = [];
+      actions.push(`<button class="btn btn-sm btn-success" onclick="window.hubConv.complete(${r.id})">确认完成</button>`);
+      actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherFromResult(${r.id})">再次执行</button>`);
+      const diff = r.diff_json ? JSON.parse(r.diff_json) : null;
+      return `<div class="card mb-2 border-start border-4 border-success">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div><span class="badge bg-dark">结果 #${r.id}</span>
+              <span class="text-muted small">task #${r.task_id} · ${H.esc(r.worker)} · ${H.esc(r.created_at)}</span></div>
+            <div>${actions.join(' ')}</div>
+          </div>
+          ${factsBlock(facts)}
+          <div class="mt-1" style="white-space:pre-wrap">${H.esc(r.summary)}</div>
+          ${diff ? `<details class="mt-2"><summary class="small text-muted">查看 Diff</summary><pre class="json">${H.esc(String(diff).slice(0, 20000))}</pre></details>` : ''}
+        </div>
+      </div>`;
+    }
+
+    function approvalItem(a) {
+      const c = a.candidate;
+      if (!c || a.state !== 'PENDING') return '';
+      return `<div class="card mb-2 border-start border-4 border-warning">
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div><span class="badge bg-warning">等待批准</span> <strong>${H.esc(c.title)}</strong>
+              <span class="text-muted small">候选 #${c.id}</span></div>
+            <div>
+              <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${H.esc(c.title).replace(/'/g, "\\'")}')">批准</button>
+              <button class="btn btn-sm btn-danger" onclick="window.hubConv.reject(${c.id})">拒绝</button>
+            </div>
+          </div>
+          ${c.description ? `<div class="text-muted small mt-1">${H.esc(c.description)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    function renderTimeline(tl) {
+      const box = document.getElementById('timeline');
+      const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+      const seenQ = new Set();
+      const seenP = new Set();
+      const html = tl.items.map((it) => {
+        if (it.type === 'message') return messageItem(it.data);
+        if (it.type === 'task') return taskItem(it.data);
+        if (it.type === 'execution') return executionItem(it.data, tl.questions, tl.permissions);
+        if (it.type === 'result') return resultItem(it.data);
+        if (it.type === 'approval') return approvalItem(it.data);
+        return '';
+      }).join('');
+      box.innerHTML = html || '<div class="text-muted">暂无消息。用下方输入框给 Hub 下达指令。</div>';
+      if (stick) box.scrollTop = box.scrollHeight;
+    }
+
+    async function load() {
+      const tl = await H.api('GET', `/api/conversations/${convId}/timeline`);
+      const c = tl.conversation;
+      document.getElementById('title').textContent = c.title || 'Conversation #' + c.id;
+      const meta = [];
+      meta.push(`<span class="badge bg-secondary">${H.esc(c.kind)}</span>`);
+      if (c.project_id) {
+        meta.push(`<a class="small" href="/project.html?id=${c.project_id}">所属项目 →</a>`);
+      }
+      document.getElementById('meta').innerHTML = meta.join(' ');
+      renderTimeline(tl);
+    }
+
+    window.hubConv = {
+      async cancelTask(id) {
+        try { await H.api('POST', `/api/tasks/${id}/cancel`, {}); load(); } catch (e) { H.formError(e); }
+      },
+      async anotherRun(id) {
+        const scenario = prompt('场景（SUCCESS/FAIL/WAIT_FOR_USER/WAIT_FOR_APPROVAL/TIMEOUT/CRASH_ONCE_THEN_SUCCESS）', 'SUCCESS');
+        if (scenario === null) return;
+        try { await H.api('POST', `/api/tasks/${id}/executions`, { scenario }); load(); } catch (e) { H.formError(e); }
+      },
+      async answer(ev, exId, qId) {
         ev.preventDefault();
-        const text = ev.target.cmd.value.trim();
-        if (!text) return false;
-        try {
-          const r = await window.hub.api('POST', '/api/user-commands', { text });
-          ev.target.cmd.value = '';
-          const d2 = await window.hub.api('GET', `/api/conversations/${id}/messages`);
-          render(d2.messages);
-          if (confirm('已创建任务候选 #' + r.candidateId + '。前往 Tasks 审批？')) location.href = '/tasks.html';
-        } catch (e) { window.hub.formError(e); }
+        try { await H.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: ev.target.elements.a.value }); load(); }
+        catch (e) { H.formError(e); }
         return false;
-      };
-      window.sendMsg = async (ev) => {
-        ev.preventDefault();
-        const text = ev.target.msg.value.trim();
-        if (!text) return false;
-        try {
-          await window.hub.api('POST', `/api/conversations/${id}/messages`, { text });
-          ev.target.msg.value = '';
-          const d2 = await window.hub.api('GET', `/api/conversations/${id}/messages`);
-          render(d2.messages);
-        } catch (e) { window.hub.formError(e); }
-        return false;
-      };
-    })().catch(window.hub.formError);
+      },
+      async perm(exId, pId, decision) {
+        try { await H.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }); load(); }
+        catch (e) { H.formError(e); }
+      },
+      async complete(rId) {
+        try { await H.api('POST', `/api/results/${rId}/review`, { action: 'complete' }); load(); }
+        catch (e) { H.formError(e); }
+      },
+      async anotherFromResult(rId) {
+        const scenario = prompt('场景', 'SUCCESS');
+        if (scenario === null) return;
+        try { await H.api('POST', `/api/results/${rId}/review`, { action: 'another_execution', scenario }); load(); }
+        catch (e) { H.formError(e); }
+      },
+      async reject(cId) {
+        const reason = prompt('拒绝原因（可留空）');
+        if (reason === null) return;
+        try { await H.api('POST', `/api/candidates/${cId}/reject`, { reason: reason || null }); load(); }
+        catch (e) { H.formError(e); }
+      },
+    };
+
+    window.sendComposer = async (ev) => {
+      ev.preventDefault();
+      const box = document.getElementById('composer');
+      const text = box.value.trim();
+      if (!text) return false;
+      const plain = document.getElementById('plain-mode').checked;
+      try {
+        if (plain) {
+          await H.api('POST', `/api/conversations/${convId}/messages`, { text });
+        } else {
+          await H.api('POST', '/api/user-commands', { text, conversationId: Number(convId) });
+        }
+        box.value = '';
+        load();
+      } catch (e) { H.formError(e); }
+      return false;
+    };
+
+    (async () => {
+      if (!convId) { document.getElementById('timeline').innerHTML = '<div class="text-danger">缺少会话 id</div>'; return; }
+      const boot = await H.api('GET', '/api/bootstrap/status').catch(() => null);
+      const isHome = boot && String(boot.globalConversation.id) === String(convId);
+      await H.page('Conversation', isHome ? 'home' : 'conversations', { noAutoReload: true });
+      load();
+      setInterval(() => {
+        const el = document.activeElement;
+        const typing = el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+        if (!typing && !document.body.classList.contains('modal-open')) load();
+      }, 15000);
+    })().catch(H.formError);
   </script>
 </body>
 </html>

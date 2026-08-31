@@ -11,10 +11,18 @@ const { findExecution, listExecutions } = require('../domain/execution');
 const { insertResult, findResultByExecution } = require('../domain/result');
 const { findQuestion, markAnswered } = require('../domain/execution-question');
 const { findPermissionRequest, decide } = require('../domain/permission-request');
-const { findActiveGrantForTask, findGrant } = require('../domain/execution-grant');
+const { findActiveGrantForTask, findGrant, insertGrant } = require('../domain/execution-grant');
 const { findApproval, findPendingApprovalForCandidate } = require('../domain/approval');
 const { appendOutbox } = require('../domain/outbox-event');
-const { findOrCreateGlobalConversation, insertMessage } = require('../domain/conversation');
+const { findOrCreateGlobalConversation, findConversation, insertMessage } = require('../domain/conversation');
+
+function conversationForTask(db, task) {
+  if (task.conversation_id) {
+    const conv = findConversation(db, task.conversation_id);
+    if (conv) return conv;
+  }
+  return findOrCreateGlobalConversation(db);
+}
 
 function syncTaskOnExecutionStart(db, task, actor) {
   if (task.state === 'OPEN' || task.state === 'REVIEW') {
@@ -59,6 +67,7 @@ function finishExecution(db, execution, { result, actor }) {
       executionId: execution.id, taskId: execution.task_id, worker: execution.worker,
       summary: result.summary, diff: result.diff || null, tests: result.tests || null,
       artifacts: result.artifacts || null, evidence: result.evidence || null,
+      facts: result.facts || null,
       actorType: actor.actorType, actorId: actor.actorId,
     });
     if (task.state === 'EXECUTING') {
@@ -72,7 +81,7 @@ function finishExecution(db, execution, { result, actor }) {
       eventType: 'RESULT_CREATED', entityType: 'result', entityId: resultId, actor,
       payload: { executionId: execution.id, taskId: execution.task_id },
     });
-    const conv = findOrCreateGlobalConversation(db);
+    const conv = conversationForTask(db, task);
     insertMessage(db, {
       conversationId: conv.id, role: 'SYSTEM', kind: 'RESULT_CARD',
       content: `执行 #${execution.id} 完成，结果 #${resultId} 待审阅`,
@@ -95,7 +104,8 @@ function failExecution(db, execution, { error, actor }) {
       eventType: 'EXECUTION_FAILED', entityType: 'execution', entityId: execution.id, actor,
       payload: { error },
     });
-    const conv = findOrCreateGlobalConversation(db);
+    const task = findTask(db, execution.task_id);
+    const conv = task ? conversationForTask(db, task) : findOrCreateGlobalConversation(db);
     insertMessage(db, {
       conversationId: conv.id, role: 'SYSTEM', kind: 'STATUS',
       content: `执行 #${execution.id} 失败：${error}`,
@@ -239,6 +249,51 @@ function hasResultForExecution(db, executionId) {
   return findResultByExecution(db, executionId) !== null;
 }
 
+function createFollowupExecution(db, { executionId, text, actor, cfg, grantOverrides }) {
+  const parent = findExecution(db, executionId);
+  if (!parent) throw new NotFoundError('execution', executionId);
+  if (!['opencode', 'codex'].includes(parent.worker)) throw new BadRequestError('followup only supported for real workers');
+  if (!['RESULT_AVAILABLE', 'FAILED'].includes(parent.state)) {
+    throw new BadRequestError(`cannot follow up on execution in state ${parent.state}`);
+  }
+  if (!text || !String(text).trim()) throw new BadRequestError('followup text required');
+  const parentGrant = findGrant(db, parent.grant_id);
+  if (!parentGrant || parentGrant.state !== 'ACTIVE') throw new BadRequestError('no active grant for followup');
+  let grantId = parentGrant.id;
+  if (grantOverrides && typeof grantOverrides === 'object' && Object.keys(grantOverrides).length > 0) {
+    const caps = Object.assign({}, JSON.parse(parentGrant.capabilities_json), grantOverrides);
+    const task = findTask(db, parent.task_id);
+    grantId = insertGrant(db, {
+      taskId: parent.task_id, taskVersion: task.version, worker: parentGrant.worker,
+      workspace: parentGrant.workspace, capabilities: caps,
+      issuedByType: actor.actorType, issuedById: actor.actorId,
+    });
+    appendDomainEvent(db, {
+      eventType: 'GRANT_ISSUED', entityType: 'grant', entityId: grantId, actor,
+      payload: { taskId: parent.task_id, worker: parentGrant.worker, followupOf: executionId, capabilities: caps },
+    });
+  }
+  const dspId = dispatchId();
+  const timeout = cfg.executionTimeoutMs;
+  const deadlineAt = new Date(Date.now() + timeout).toISOString();
+  return tx(db, () => {
+    appendOutbox(db, {
+      eventType: 'WORKER_DISPATCH_REQUESTED', entityType: 'task', entityId: parent.task_id,
+      payload: {
+        taskId: parent.task_id, grantId, dispatchId: dspId, worker: parent.worker,
+        scenario: 'SUCCESS', timeoutMs: timeout, deadlineAt,
+        continueThreadId: executionId, prompt: String(text).trim(),
+      },
+      maxAttempts: cfg.outboxMaxAttempts,
+    });
+    appendDomainEvent(db, {
+      eventType: 'WORKER_FOLLOWUP_REQUESTED', entityType: 'execution', entityId: executionId, actor,
+      payload: { dispatchId: dspId, taskId: parent.task_id, grantId },
+    });
+    return dspId;
+  });
+}
+
 module.exports = {
   startExecution,
   finishExecution,
@@ -247,6 +302,7 @@ module.exports = {
   answerQuestion,
   decidePermissionRequest,
   requestAnotherExecution,
+  createFollowupExecution,
   cancelTask,
   hasResultForExecution,
 };

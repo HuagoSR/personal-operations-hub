@@ -51,10 +51,18 @@ function resolveWorkspace(ctx, grant) {
 function makeSession(db, ctx, execution, grant) {
   const cached = sessions.get(execution.id);
   if (cached && cached.profile.worker === execution.worker) return cached;
-  const dataRoot = path.resolve(ctx.cfg.workerProfileRoot || path.join(ctx.cfg.dataDir, 'workers'));
-  const profileDir = path.join(dataRoot, execution.worker, `ex-${execution.id}`);
-  const homeDir = path.join(profileDir, 'home');
-  fs.mkdirSync(homeDir, { recursive: true });
+  const existing = profileRow(db, execution.id);
+  let profileDir;
+  let homeDir;
+  if (existing && existing.profile_dir && existing.home_dir) {
+    profileDir = existing.profile_dir;
+    homeDir = existing.home_dir;
+  } else {
+    const dataRoot = path.resolve(ctx.cfg.workerProfileRoot || path.join(ctx.cfg.dataDir, 'workers'));
+    profileDir = path.join(dataRoot, execution.worker, `ex-${execution.id}`);
+    homeDir = path.join(profileDir, 'home');
+    fs.mkdirSync(homeDir, { recursive: true });
+  }
   const networkMode = networkModeFor(grant);
   const profile = {
     execution_id: execution.id,
@@ -64,6 +72,8 @@ function makeSession(db, ctx, execution, grant) {
     network_mode: networkMode,
     workspace: resolveWorkspace(ctx, grant),
     status: 'RUNNING',
+    session_id: existing ? existing.session_id : null,
+    task_prompt: existing ? existing.task_prompt : null,
   };
   let session;
   if (execution.worker === 'opencode') {
@@ -107,12 +117,14 @@ function markRunning(db, execution, actor, timeoutMs) {
 
 async function pumpExecution(db, ctx, execution) {
   if (execution.worker === 'fake-worker' || execution.worker === WORKER_TYPES_FAKE) return;
-  if (!['QUEUED', 'RUNNING'].includes(execution.state)) return;
+  if (!['QUEUED', 'RUNNING', 'WAITING_FOR_USER', 'WAITING_FOR_APPROVAL'].includes(execution.state)) return;
   const grant = execution.grant_id ? findGrant(db, execution.grant_id) : null;
   if (!grant || grant.state !== 'ACTIVE') {
     failExecutionWithError(db, execution, 'execution grant missing or revoked', workerActor(execution.worker));
     return;
   }
+  const recovering = execution.state.startsWith('WAITING');
+  if (recovering && sessions.has(execution.id)) return;
   let session;
   try {
     session = makeSession(db, ctx, execution, grant);
@@ -124,7 +136,8 @@ async function pumpExecution(db, ctx, execution) {
   if (execution.state === 'QUEUED') {
     try {
       const task = findTask(db, execution.task_id);
-      const prompt = `${task.title}\n${task.description || ''}`.trim();
+      const profile = profileRow(db, execution.id);
+      const prompt = (profile && profile.task_prompt) || `${task.title}\n${task.description || ''}`.trim();
       const actor = workerActor(execution.worker);
       tx(db, () => {
         markRunning(db, execution, actor, ctx.cfg.workerTimeoutMs || 1800000);
@@ -137,18 +150,32 @@ async function pumpExecution(db, ctx, execution) {
       sessions.delete(execution.id);
       return;
     }
-  } else if (execution.state === 'RUNNING') {
+  } else {
     try {
       if (!session.task) {
         const task = findTask(db, execution.task_id);
         const prompt = `${task.title}\n${task.description || ''}`.trim();
         const profile = profileRow(db, execution.id);
-        if (profile && profile.session_id) {
+        if (recovering) {
+          expirePendingRows(db, execution.id);
+          await session.startTask(task, prompt);
+        } else if (profile && profile.session_id) {
           session.profile.session_id = profile.session_id;
           await session.resumeTask(task, prompt);
         } else {
           await session.startTask(task, prompt);
         }
+      }
+      if (recovering && !session.done && !session.failed) {
+        const current = findExecution(db, execution.id);
+        tx(db, () => {
+          applyTransition(db, {
+            table: 'executions', entityType: 'execution', id: current.id,
+            from: current.state, to: 'RUNNING',
+            transitions: EXECUTION_TRANSITIONS, version: current.version, actor: workerActor(execution.worker),
+            reason: 'resumed after hub restart',
+          });
+        });
       }
       await session.pump();
     } catch (e) {
@@ -166,6 +193,20 @@ async function pumpExecution(db, ctx, execution) {
     } else {
       upsertProfile(db, Object.assign({}, session.profile, { status: current.state, last_activity_at: new Date().toISOString() }));
     }
+  }
+}
+
+function expirePendingRows(db, executionId) {
+  const perms = db.prepare("UPDATE permission_requests SET state = 'EXPIRED', decided_at = ? WHERE execution_id = ? AND state = 'OPEN'")
+    .run(new Date().toISOString(), executionId).changes;
+  const questions = db.prepare("UPDATE execution_questions SET state = 'EXPIRED', answered_at = ? WHERE execution_id = ? AND state = 'OPEN'")
+    .run(new Date().toISOString(), executionId).changes;
+  if (perms > 0 || questions > 0) {
+    appendDomainEvent(db, {
+      eventType: 'RESTART_RECOVERY_EXPIRED_PENDING', entityType: 'execution', entityId: executionId,
+      actor: { actorType: 'HUB', actorId: 'hub-v01' },
+      payload: { expiredPermissions: perms, expiredQuestions: questions },
+    });
   }
 }
 

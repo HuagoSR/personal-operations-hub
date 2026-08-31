@@ -1,8 +1,8 @@
 'use strict';
 
 function insertProject(db, p) {
-  const res = db.prepare('INSERT INTO projects (name, description, workspace_path) VALUES (?, ?, ?)')
-    .run(p.name, p.description || null, p.workspacePath || null);
+  const res = db.prepare('INSERT INTO projects (name, description, workspace_path, project_type, sort_order) VALUES (?, ?, ?, ?, ?)')
+    .run(p.name, p.description || null, p.workspacePath || null, p.projectType || 'USER', p.sortOrder === undefined ? 100 : p.sortOrder);
   return Number(res.lastInsertRowid);
 }
 
@@ -15,7 +15,7 @@ function findProjectByName(db, name) {
 }
 
 function listProjects(db, limit = 100) {
-  return db.prepare('SELECT * FROM projects ORDER BY id LIMIT ?').all(limit);
+  return db.prepare('SELECT * FROM projects ORDER BY sort_order, id LIMIT ?').all(limit);
 }
 
 module.exports = { insertProject, findProject, findProjectByName, listProjects };

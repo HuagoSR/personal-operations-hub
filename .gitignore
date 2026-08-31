@@ -13,5 +13,4 @@ node_modules/
 collector-state.json
 
 # dev artifacts
-hub/tests/
 research/soak/

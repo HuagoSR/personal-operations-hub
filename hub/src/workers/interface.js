@@ -10,9 +10,17 @@ const { tx } = require('../services/tx');
 const { insertExecution } = require('../domain/execution');
 const { findTask } = require('../domain/task');
 const { insertResult } = require('../domain/result');
-const { findOrCreateGlobalConversation, insertMessage } = require('../domain/conversation');
+const { findOrCreateGlobalConversation, findConversation, insertMessage } = require('../domain/conversation');
 
 const FAKE_WORKER_ACTOR = { actorType: ACTORS.FAKE_WORKER, actorId: 'fake-worker' };
+
+function conversationForTask(db, task) {
+  if (task && task.conversation_id) {
+    const conv = findConversation(db, task.conversation_id);
+    if (conv) return conv;
+  }
+  return findOrCreateGlobalConversation(db);
+}
 
 function finishExecutionWithResult(db, execution, result, actor) {
   return tx(db, () => {
@@ -26,6 +34,7 @@ function finishExecutionWithResult(db, execution, result, actor) {
       executionId: execution.id, taskId: execution.task_id, worker: execution.worker,
       summary: result.summary, diff: result.diff || null, tests: result.tests || null,
       artifacts: result.artifacts || null, evidence: result.evidence || null,
+      facts: result.facts || null,
       actorType: actor.actorType, actorId: actor.actorId,
     });
     const task = findTask(db, execution.task_id);
@@ -40,7 +49,7 @@ function finishExecutionWithResult(db, execution, result, actor) {
       eventType: 'RESULT_CREATED', entityType: 'result', entityId: resultId, actor,
       payload: { executionId: execution.id, taskId: execution.task_id },
     });
-    const conv = findOrCreateGlobalConversation(db);
+    const conv = conversationForTask(db, task);
     insertMessage(db, {
       conversationId: conv.id, role: 'SYSTEM', kind: 'RESULT_CARD',
       content: `execution #${execution.id} finished, result #${resultId} ready for review`,
@@ -75,7 +84,8 @@ function failExecutionWithError(db, execution, error, actor) {
       eventType: 'EXECUTION_FAILED', entityType: 'execution', entityId: execution.id, actor,
       payload: { error },
     });
-    const conv = findOrCreateGlobalConversation(db);
+    const task = findTask(db, execution.task_id);
+    const conv = conversationForTask(db, task);
     insertMessage(db, {
       conversationId: conv.id, role: 'SYSTEM', kind: 'STATUS',
       content: `execution #${execution.id} failed: ${error}`,

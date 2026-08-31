@@ -34,6 +34,13 @@ UPDATE tasks SET state=?, version=version+1 WHERE id=? AND state=? AND version=?
 - Grant 吊销：后续 Worker permission 不得自动放行（评测点：决策时实时读 Grant 状态）
 - 执行 watchdog：RUNNING 超 deadline → FAILED（防假 RUNNING 老化）
 
-## 6. 验收场景（V0.1 已全 PASS；Phase 4 的故障清单见 PHASE4_PLAN）
+## 6. 验收场景（V0.1 已全 PASS；Phase 4 故障矩阵见 PHASE4 报告；Phase 5 恢复实测见 PHASE5_GOMOK_FINAL_REPORT）
 
 Source 幂等 / 双审批 / crash-after-approval / 重复派发 / Worker 失败 / WAITING_FOR_USER 重启恢复 / Approval 过期 / Grant 吊销 / Result 不可变 / Worker 不能完成 Task。
+
+## 7. Hub Self 自举可靠性（Phase 6，D013/D014）
+
+- 自我修改 = 隔离开发副本 + 测试全绿 + Result/Diff + commit hash + 用户 Review + 手动 apply；生产 Hub 永不原地编辑。
+- 每次 apply 前自动备份（tar），`scripts/rollback-hub.sh` 提供带外回滚；health check 失败自动回滚并审计。
+- 带外恢复 SOP 不依赖 Hub（SSH + known-good tag + systemd），自动部署评估前必须演练通过。
+- GLOBAL_HUB 合并等数据迁移必须先备份 + 迁移测试；timeline 等只读投影不得改业务真相。

@@ -30,6 +30,12 @@ function fakeResult(execution, extraEvidence) {
       worker: execution.worker,
       simulated: true,
     }, extraEvidence || {}),
+    facts: {
+      changedFiles: [],
+      diffStat: { files: 0, additions: 0, deletions: 0 },
+      testsRun: { name: 'fake-unit-tests', status: 'pass', count: 3 },
+      commitHash: null,
+    },
   };
 }
 

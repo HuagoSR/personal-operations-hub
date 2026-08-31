@@ -25,6 +25,7 @@ const DEFAULTS = {
   workerDefaultWorkspace: '/home/huagosr/worker-sandbox-untrusted/calc',
   workerAllowedRoots: ['/home/huagosr/worker-sandbox-untrusted', '/home/huagosr/worker-sandbox'],
   workerTimeoutMs: 1800000,
+  workerCodexModel: 'gpt-5.6-luna',
   workerProfileRoot: '',
   workerDeepseekApiKeyFile: '/home/huagosr/.opencode/.env',
 };

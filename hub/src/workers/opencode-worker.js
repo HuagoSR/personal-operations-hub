@@ -101,7 +101,10 @@ class OpenCodeWorkerSession {
       extraRoBinds.push([path.join(hostOpenCode, 'bin'), '/opt/opencode-bin']);
     }
     const network = this.profile.network_mode || 'command-deny';
-    const env = ['DEEPSEEK_API_KEY=' + this.ctx.cfg.workerDeepseekApiKey];
+    const env = [
+      'DEEPSEEK_API_KEY=' + this.ctx.cfg.workerDeepseekApiKey,
+      'PATH=' + this.profile.workspace + '/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+    ];
     const child = runSandboxed(
       {
         workspace: this.profile.workspace,
@@ -272,6 +275,7 @@ class OpenCodeWorkerSession {
       capability,
       worker: WORKER_TYPE,
       metadata: { externalId: perm.id, action: perm.action, resources: perm.resources },
+      externalId: `oc:${perm.id}`,
     });
     if (res.decision === 'ASK_USER') {
       this.pendingApproval = perm;

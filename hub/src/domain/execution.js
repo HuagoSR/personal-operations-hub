@@ -2,10 +2,10 @@
 
 function insertExecution(db, e) {
   const res = db.prepare(`INSERT INTO executions
-    (task_id, grant_id, worker, scenario, execution_dispatch_id, state, timeout_ms, deadline_at)
-    VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?)`)
+    (task_id, grant_id, worker, scenario, execution_dispatch_id, state, timeout_ms, deadline_at, resume_from_execution, conversation_id)
+    VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`)
     .run(e.taskId, e.grantId || null, e.worker, e.scenario, e.executionDispatchId,
-      e.timeoutMs || null, e.deadlineAt || null);
+      e.timeoutMs || null, e.deadlineAt || null, e.resumeFromExecution || null, e.conversationId || null);
   return Number(res.lastInsertRowid);
 }
 
@@ -29,7 +29,7 @@ function listExecutions(db, { state, taskId, limit = 200 } = {}) {
 
 function listRunnableExecutions(db, nowIso) {
   return db.prepare(`SELECT * FROM executions
-    WHERE (state = 'QUEUED' OR state = 'RUNNING')
+    WHERE state IN ('QUEUED', 'RUNNING', 'WAITING_FOR_USER', 'WAITING_FOR_APPROVAL')
       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
     ORDER BY id`).all(nowIso);
 }

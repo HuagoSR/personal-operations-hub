@@ -2,9 +2,9 @@
 
 function insertTask(db, t) {
   const res = db.prepare(`INSERT INTO tasks
-    (candidate_id, title, description, project_id)
-    VALUES (?, ?, ?, ?)`)
-    .run(t.candidateId || null, t.title, t.description || null, t.projectId || null);
+    (candidate_id, title, description, project_id, conversation_id)
+    VALUES (?, ?, ?, ?, ?)`)
+    .run(t.candidateId || null, t.title, t.description || null, t.projectId || null, t.conversationId || null);
   return Number(res.lastInsertRowid);
 }
 

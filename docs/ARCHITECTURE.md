@@ -16,18 +16,34 @@
 - Gateway 细节与踩坑见 `research/GATEWAY_HISTORY.md`；Hub 实施见 `research/HUB_V01_REPORT.md`。
 - 关键事实：`wechat_timestamp` 是发送端时钟不可靠；微信掉线→重登后补采；spool sequence 按 gateway 单调。
 
-## 二、PLANNED：Real Worker（Phase 4，进行中）
+## 二、PLANNED：Real Worker（Phase 4 已完成）+ Control Web & Hub Self Project（Phase 6 进行中）
 
 ```
 Hub Core（不变）
   → WorkerManager
-      ├── OpenCodeWorker（opencode serve REST+SSE）
-      └── CodexWorker（app-server JSON-RPC）
-  → ExecutionGrant Enforcement（bwrap/隔离，独立 Gate）
-  → Sandbox 测试项目（~\/worker-sandbox/，本阶段唯一可操作对象）
+      ├── OpenCodeWorker（适配器就绪，上游目录回归待解锁）
+      └── CodexWorker（✅ Phase 4/5 已验证）
+  → ExecutionGrant Enforcement（bwrap 8/8，独立 Gate）
+  → Sandbox 测试项目（worker-sandbox-untrusted/）
+  → Hub Self Project（SYSTEM_HUB，隔离开发副本，手动 apply）
 ```
 
-分层职责不变：Hub=控制面（审批/调度/转发/审计），Worker=执行面（读码/改码/测试/git/shell）。详细计划见 `research/PHASE4_PLAN.md`。
+Phase 6 交互模型（详见 `research/PHASE6_PRODUCT_MODEL.md`）：
+
+```
+Hub
+├── Home（Global Hub，跨项目个人助手）
+├── Inbox / Tasks / Approvals（全局运维视图）
+└── Projects
+     ├── Hub（SYSTEM_HUB，管理 Hub 自己；独立安全域）
+     ├── Gomoku（USER）
+     └── …
+          └── Conversation（长期交互上下文 ≠ Task；结构化卡片投影）
+```
+
+关键决策（D011–D014）：零构建前端+渐进增强；Global Hub 与 Hub Self Project 永不合并；自我修改用隔离开发副本、生产永不原地编辑、手动 apply；Self 副本内 git_commit=ALLOW、push/deploy 显式批准。
+
+分层职责不变：Hub=控制面（审批/调度/转发/审计），Worker=执行面（读码/改码/测试/git/shell）。
 
 ## 三、数据模型（V0.1 已落地，以 `hub/src/migrations/001_init.sql` 为准）
 

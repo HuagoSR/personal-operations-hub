@@ -1,8 +1,8 @@
 'use strict';
 
 function insertConversation(db, c) {
-  const res = db.prepare('INSERT INTO conversations (project_id, title, kind) VALUES (?, ?, ?)')
-    .run(c.projectId || null, c.title || null, c.kind || 'PROJECT');
+  const res = db.prepare('INSERT INTO conversations (project_id, title, kind, is_default) VALUES (?, ?, ?, ?)')
+    .run(c.projectId || null, c.title || null, c.kind || 'PROJECT', c.isDefault ? 1 : 0);
   return Number(res.lastInsertRowid);
 }
 
@@ -23,8 +23,14 @@ function listConversations(db, { projectId, kind, limit = 100 } = {}) {
 function findOrCreateGlobalConversation(db) {
   const existing = db.prepare("SELECT * FROM conversations WHERE kind = 'GLOBAL_HUB' LIMIT 1").get();
   if (existing) return existing;
-  const id = insertConversation(db, { kind: 'GLOBAL_HUB', title: 'Global Hub' });
-  return findConversation(db, id);
+  try {
+    const id = insertConversation(db, { kind: 'GLOBAL_HUB', title: 'Global Hub' });
+    return findConversation(db, id);
+  } catch (e) {
+    const again = db.prepare("SELECT * FROM conversations WHERE kind = 'GLOBAL_HUB' LIMIT 1").get();
+    if (again) return again;
+    throw e;
+  }
 }
 
 function insertMessage(db, m) {
