@@ -256,7 +256,10 @@ class CodexWorkerSession {
     if (m === 'item/commandExecution/requestApproval') {
       const p = req.params || {};
       const needsNetwork = !!(p.additionalPermissions && p.additionalPermissions.network && p.additionalPermissions.network.enabled);
-      const capability = needsNetwork ? 'network' : 'run_project_commands';
+      const cmd = String(p.command || '');
+      let capability = needsNetwork ? 'network' : 'run_project_commands';
+      if (/^git\s+(push|fetch|pull|clone|remote\s+add|submodule\s+update)/i.test(cmd)) capability = 'git_push';
+      else if (/^git\s+(commit|add|mv|rm|reset|rebase|cherry-pick|merge)/i.test(cmd)) capability = 'git_commit';
       const res = decideWorkerPermission(this.db, {
         executionId: this.execution.id,
         grant: this.grant,
@@ -337,7 +340,7 @@ class CodexWorkerSession {
     if (this.child) { try { this.child.kill('SIGTERM'); } catch (e) { } }
   }
 
-  buildResult() {
+  buildResult(gitFacts) {
     const fileChanges = (this.finalItems || []).filter((i) => i.type === 'fileChange');
     const commands = (this.finalItems || []).filter((i) => i.type === 'commandExecution');
     const diff = fileChanges.length ? fileChanges.map((c) => (c.changes || []).map((x) => x.diff).join('\n')).join('\n') : null;
@@ -363,6 +366,13 @@ class CodexWorkerSession {
       testsRun: tests ? tests[0] : null,
       commitHash: null,
     };
+    if (gitFacts) {
+      facts.commitHash = gitFacts.commitHash || null;
+      facts.baseCommit = gitFacts.baseCommit || null;
+      facts.commitSubject = gitFacts.commitSubject || null;
+      if (gitFacts.changedFiles && gitFacts.changedFiles.length) facts.changedFiles = gitFacts.changedFiles;
+      if (gitFacts.diffStat) facts.diffStat = gitFacts.diffStat;
+    }
     return {
       summary: this.finalAnswer || '(no final answer)',
       diff,

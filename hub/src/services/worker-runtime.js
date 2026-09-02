@@ -14,8 +14,46 @@ const {
 const { workerActor } = require('../workers/approval-policy');
 const { OpenCodeWorkerSession } = require('../workers/opencode-worker');
 const { CodexWorkerSession } = require('../workers/codex-worker');
+const { runSandboxedCapture } = require('../workers/exec/runner');
 
 const sessions = new Map();
+
+async function collectGitEvidence(ctx, profile) {
+  const ws = profile.workspace;
+  try {
+    if (!fs.existsSync(path.join(ws, '.git'))) return null;
+  } catch (e) { return null; }
+  const opts = { workspace: ws, homeDir: profile.home_dir, network: 'command-deny' };
+  const run = (cmd) => runSandboxedCapture(opts, cmd, 15000);
+  const head = await run(['git', 'rev-parse', 'HEAD']);
+  if (!head.ok || !head.stdout.trim()) return null;
+  const commitHash = head.stdout.trim();
+  const baseTag = (ctx.cfg && ctx.cfg.selfDevBaseTag) || 'phase6d-known-good';
+  const base = await run(['git', 'rev-parse', baseTag]);
+  const baseCommit = base.ok && base.stdout.trim() ? base.stdout.trim() : null;
+  const numstat = await run(['git', 'diff', '--numstat', baseCommit || 'HEAD~1', 'HEAD']);
+  const subject = await run(['git', 'log', '-1', '--format=%s', 'HEAD']);
+  const changedFiles = [];
+  let additions = 0;
+  let deletions = 0;
+  for (const line of numstat.stdout.split('\n')) {
+    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.*)$/);
+    if (!m || !m[3]) continue;
+    changedFiles.push({ path: m[3], additions: m[1] === '-' ? 0 : parseInt(m[1], 10), deletions: m[2] === '-' ? 0 : parseInt(m[2], 10) });
+  }
+  for (const f of changedFiles) {
+    if (f.path.endsWith('.md') || f.path.endsWith('.json')) continue;
+    additions += f.additions;
+    deletions += f.deletions;
+  }
+  return {
+    commitHash,
+    baseCommit,
+    commitSubject: subject.ok ? subject.stdout.trim() : null,
+    changedFiles: changedFiles.slice(0, 200),
+    diffStat: { files: changedFiles.length, additions, deletions },
+  };
+}
 
 function profileRow(db, executionId) {
   return db.prepare('SELECT * FROM worker_profiles WHERE execution_id = ?').get(executionId) || null;
@@ -185,7 +223,8 @@ async function pumpExecution(db, ctx, execution) {
     }
     const current = findExecution(db, execution.id);
     if (session.done) {
-      finishExecutionWithResult(db, current, session.buildResult(), workerActor(execution.worker));
+      const gitFacts = await collectGitEvidence(ctx, session.profile);
+      finishExecutionWithResult(db, current, session.buildResult(gitFacts || undefined), workerActor(execution.worker));
       sessions.delete(execution.id);
     } else if (session.failed) {
       failExecutionWithError(db, current, session.failed.slice(0, 400), workerActor(execution.worker));

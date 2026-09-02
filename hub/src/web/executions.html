@@ -4,36 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Executions</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
   <div class="container">
-    <h4>Executions</h4>
+    <h4 data-i18n="title.executions">执行记录</h4>
     <div id="list"></div>
   </div>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Executions', 'executions');
+    window.hub.page(t('title.executions'), 'executions');
     (async () => {
+      const box = document.getElementById('list');
+      box.innerHTML = window.hub.skeletonList();
       const rows = await window.hub.api('GET', '/api/executions');
       document.getElementById('list').innerHTML = rows.map((ex) => `
         <div class="card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <div>
-                <span class="badge bg-dark">#${ex.id}</span>
-                <strong>${window.hub.esc(ex.scenario)}</strong>
-                <span class="text-muted small">task #${ex.task_id} / ${window.hub.esc(ex.worker)} / attempt ${ex.attempt}</span>
-                ${window.hub.badge(ex.state)}
-              </div>
-              <div><a class="btn btn-sm btn-outline-primary" href="/tasks.html">在 Tasks 中操作</a></div>
-            </div>
-            ${ex.error ? `<div class="text-danger small">${window.hub.esc(ex.error)}</div>` : ''}
-            ${ex.started_at ? `<div class="text-muted small">started ${window.hub.esc(ex.started_at)}${ex.finished_at ? ' · finished ' + window.hub.esc(ex.finished_at) : ''}</div>` : ''}
+          <div class="card-head">
+            ${window.hub.typeChip('execution')}<span class="chip">#${ex.id}</span>
+            <span class="card-title">${window.hub.esc(ex.scenario)}</span>
+            <span class="card-meta">${t('common.taskWord')} #${ex.task_id} / ${window.hub.esc(ex.worker)} / attempt ${ex.attempt}</span>
+            <span class="spacer"></span>
+            ${window.hub.badge(ex.state)}
+            ${ex.started_at ? `<span class="card-meta mono" title="${window.hub.esc(ex.started_at)}">${window.hub.fmtTime(ex.started_at)}</span>${ex.finished_at ? `<span class="card-meta mono" title="${window.hub.esc(ex.finished_at)}"> → ${window.hub.fmtTime(ex.finished_at)}</span>` : ''}` : ''}
           </div>
-        </div>`).join('') || '<div class="text-muted">暂无执行记录</div>';
+          ${ex.error ? `<div class="card-body"><div class="text-danger small mono">${window.hub.esc(ex.error)}</div></div>` : ''}
+        </div>`).join('') || window.hub.emptyHtml('executions', t('exec.empty'));
     })().catch(window.hub.formError);
   </script>
 </body>

@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
   <title>Conversation</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
@@ -14,133 +16,150 @@
       <h4 id="title" class="mb-0">Conversation</h4>
       <div id="meta"></div>
     </div>
-    <div id="timeline" class="flex-grow-1 overflow-auto border rounded bg-white p-3" style="min-height:300px"></div>
-    <form class="mt-2" onsubmit="return sendComposer(event)">
-      <div class="d-flex align-items-end gap-2">
-        <textarea class="form-control" id="composer" rows="2" placeholder="输入指令（Enter 发送生成任务候选；Shift+Enter 换行）"></textarea>
-        <button class="btn btn-primary">发送</button>
-      </div>
-      <div class="form-check form-check-inline mt-1">
-        <input class="form-check-input" type="checkbox" id="plain-mode">
-        <label class="form-check-label small text-muted" for="plain-mode">仅记录为消息（不生成任务候选）</label>
+    <div id="timeline" class="conv-scroll flex-grow-1" style="min-height:300px"></div>
+    <form class="composer mt-2" onsubmit="return sendComposer(event)">
+      <textarea class="form-control" id="composer" rows="2" data-i18n-ph="conv.placeholder" placeholder="输入指令（Enter 发送生成任务候选；Shift+Enter 换行）"></textarea>
+      <div class="composer-foot">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="plain-mode">
+          <label class="form-check-label small text-muted" for="plain-mode" data-i18n="conv.recordOnly">仅记录为消息（不生成任务候选）</label>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn btn-primary btn-sm" data-i18n="common.send">发送</button>
       </div>
     </form>
   </div>
+  <script src="/i18n.js"></script>
+  <script src="/md.js"></script>
   <script src="/app.js"></script>
   <script>
     'use strict';
     const convId = new URLSearchParams(location.search).get('id');
-    let lastItems = null;
 
     const H = window.hub;
-
-    function factsBlock(facts) {
-      if (!facts) return '';
-      const rows = [];
-      if (facts.testsRun) {
-        const t = facts.testsRun;
-        rows.push(`<span class="badge ${t.status === 'pass' ? 'bg-success' : 'bg-danger'}">Tests: ${H.esc(t.status)}${t.total !== undefined ? ` (${t.total})` : ''}${t.pass !== undefined ? ` pass ${t.pass}` : ''}${t.fail !== undefined ? ` fail ${t.fail}` : ''}</span>`);
-      }
-      if (facts.diffStat) {
-        const d = facts.diffStat;
-        rows.push(`<span class="badge bg-secondary">变更 ${d.files} 文件 +${d.additions} -${d.deletions}</span>`);
-      }
-      if (facts.changedFiles && facts.changedFiles.length) {
-        rows.push(`<span class="badge bg-secondary">文件: ${H.esc(facts.changedFiles.map((f) => f.path).join(', ').slice(0, 120))}</span>`);
-      }
-      if (facts.commitHash) {
-        rows.push(`<span class="badge bg-dark">commit ${H.esc(String(facts.commitHash).slice(0, 12))}</span>`);
-      }
-      return rows.length ? `<div class="mt-1">${rows.join(' ')}</div>` : '';
-    }
+    const box = () => document.getElementById('timeline');
 
     function messageItem(m) {
+      const timeSpan = `<span title="${H.esc(m.created_at)}">${H.fmtTime(m.created_at)}</span>`;
       if (m.role === 'USER') {
         return `<div class="d-flex justify-content-end mb-2"><div class="msg-bubble msg-user" style="max-width:75%">
-          <div class="small text-muted">你 · ${H.esc(m.kind)} · ${H.esc(m.created_at)}</div>
-          <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+          <div class="small text-muted">${t('common.you')} · ${H.esc(m.kind)} · ${timeSpan}</div>
+          ${mdLite(m.content)}
         </div></div>`;
       }
       if (m.role === 'WORKER') {
         return `<div class="d-flex justify-content-start mb-2"><div class="msg-bubble msg-worker" style="max-width:85%">
-          <div class="small text-muted">Worker · ${H.esc(m.created_at)}</div>
-          <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+          <div class="small text-muted">Worker · ${timeSpan}</div>
+          ${mdLite(m.content)}
         </div></div>`;
       }
       return `<div class="text-center mb-2"><div class="msg-bubble msg-system d-inline-block" style="max-width:85%">
-        <div class="small text-muted">${H.esc(m.kind)} · ${H.esc(m.created_at)}</div>
-        <div style="white-space:pre-wrap">${H.esc(m.content)}</div>
+        <div class="small text-muted">${H.esc(m.kind)} · ${timeSpan}</div>
+        ${mdLite(m.content)}
       </div></div>`;
     }
 
-    function taskItem(t) {
+    function taskItem(task) {
       const actions = [];
-      if (!['COMPLETED', 'CANCELLED'].includes(t.state)) {
-        actions.push(`<button class="btn btn-sm btn-outline-danger" onclick="window.hubConv.cancelTask(${t.id})">取消</button>`);
+      if (!['COMPLETED', 'CANCELLED'].includes(task.state)) {
+        actions.push(`<button class="btn btn-sm btn-outline-danger" onclick="window.hubConv.cancelTask(${task.id}, this)">${t('common.cancelTask')}</button>`);
       }
-      if (['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(t.state)) {
-        actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherRun(${t.id})">再次执行</button>`);
+      if (['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(task.state)) {
+        actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherRun(${task.id})">${t('common.rerun')}</button>`);
       }
-      return `<div class="card mb-2 border-start border-4 border-primary">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div><span class="badge bg-dark">任务 #${t.id}</span> <strong>${H.esc(t.title)}</strong> ${H.badge(t.state)}</div>
-            <div>${actions.join(' ')}</div>
-          </div>
+      return `<div class="card mb-2">
+        <div class="card-head">
+          ${H.typeChip('task')}<span class="chip">#${task.id}</span>
+          <strong class="card-title">${H.esc(task.title)}</strong> ${H.badge(task.state)}
+          <span class="spacer"></span>
         </div>
+        ${actions.length ? `<div class="card-foot">${actions.join(' ')}</div>` : ''}
       </div>`;
     }
 
     function executionItem(e, questions, permissions) {
       const openQs = questions.filter((q) => q.execution_id === e.id && q.state === 'OPEN');
       const openPs = permissions.filter((p) => p.execution_id === e.id && p.state === 'OPEN');
+      const hasBody = e.error || openQs.length || openPs.length;
       return `<div class="card mb-2">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <span class="badge bg-dark">执行 #${e.id}</span>
-              <span class="text-muted small">${H.esc(e.worker)} · ${H.esc(e.scenario)} · attempt ${e.attempt}</span>
-              ${H.badge(e.state)}
-            </div>
-            <span class="text-muted small">${e.started_at ? H.esc(e.started_at) : ''}</span>
-          </div>
-          ${e.error ? `<div class="text-danger small mt-1">${H.esc(e.error)}</div>` : ''}
+        <div class="card-head">
+          ${H.typeChip('execution')}<span class="chip">#${e.id}</span>
+          <span class="card-meta">${H.esc(e.worker)} · ${H.esc(e.scenario)} · attempt ${e.attempt}</span>
+          <span class="spacer"></span>
+          ${H.badge(e.state)}
+          ${e.started_at ? `<span class="card-meta" title="${H.esc(e.started_at)}">${H.fmtTime(e.started_at)}</span>` : ''}
+        </div>
+        ${hasBody ? `<div class="card-body">
+          ${e.error ? `<div class="text-danger small mb-1">${H.esc(e.error)}</div>` : ''}
           ${openQs.map((q) => `
-            <div class="mt-2 p-2 border rounded bg-light">
-              <span class="badge bg-warning">Worker 提问</span>
-              <div class="mt-1">${H.esc(q.question)}</div>
+            <div class="inline-ask">
+              ${H.typeChip('question')}
+              <div class="mt-1">${mdLite(q.question)}</div>
               <form class="d-flex gap-1 mt-1" onsubmit="return window.hubConv.answer(event, ${e.id}, ${q.id})">
-                <input class="form-control form-control-sm" name="a" placeholder="回答">
-                <button class="btn btn-sm btn-primary">回答</button>
+                <input class="form-control form-control-sm" name="a" placeholder="${t('common.answerPh')}">
+                <button class="btn btn-sm btn-primary">${t('common.reply')}</button>
               </form>
             </div>`).join('')}
           ${openPs.map((p) => `
-            <div class="mt-2 p-2 border rounded bg-light">
-              <span class="badge bg-warning">权限请求</span> ${H.esc(p.capability)}
-              ${p.high_risk ? '<span class="badge bg-danger">高风险</span>' : ''}
-              <button class="btn btn-sm btn-success ms-2" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'allow')">允许</button>
-              <button class="btn btn-sm btn-danger" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'deny')">拒绝</button>
+            <div class="inline-ask">
+              ${H.typeChip('perm')} <span class="chip">${H.esc(p.capability)}</span>
+              ${p.high_risk ? `<span class="badge b-danger"><i class="dot"></i>${t('common.highRisk')}</span>` : ''}
+              <span class="spacer"></span>
+              <button class="btn btn-sm btn-success" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'allow', this)">${t('common.allow')}</button>
+              <button class="btn btn-sm btn-danger" onclick="window.hubConv.perm(${e.id}, ${p.id}, 'deny', this)">${t('common.deny')}</button>
             </div>`).join('')}
-        </div>
+        </div>` : ''}
       </div>`;
     }
 
-    function resultItem(r) {
+    function resultItem(r, taskById) {
       const facts = r.facts_json ? JSON.parse(r.facts_json) : null;
+      const task = taskById && taskById[r.task_id] ? taskById[r.task_id] : null;
+      const confirmed = !!(task && task.state === 'COMPLETED');
       const actions = [];
-      actions.push(`<button class="btn btn-sm btn-success" onclick="window.hubConv.complete(${r.id})">确认完成</button>`);
-      actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherFromResult(${r.id})">再次执行</button>`);
+      if (confirmed) {
+        actions.push(`<button class="btn btn-sm btn-success" disabled>${H.icon('checkCircle', 13)}${t('common.done')}</button>`);
+      } else {
+        actions.push(`<button class="btn btn-sm btn-success" onclick="window.hubConv.complete(${r.id}, this)">${t('common.complete')}</button>`);
+      }
+      actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="window.hubConv.anotherFromResult(${r.id})">${t('common.rerun')}</button>`);
+      if (facts && facts.commitHash) {
+        actions.push(`<button class="btn btn-sm btn-outline-dark" onclick="window.hubConv.prepareApply(${r.id}, this)">${t('common.prepareUpdate')}</button>`);
+      }
       const diff = r.diff_json ? JSON.parse(r.diff_json) : null;
-      return `<div class="card mb-2 border-start border-4 border-success">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div><span class="badge bg-dark">结果 #${r.id}</span>
-              <span class="text-muted small">task #${r.task_id} · ${H.esc(r.worker)} · ${H.esc(r.created_at)}</span></div>
-            <div>${actions.join(' ')}</div>
-          </div>
-          ${factsBlock(facts)}
-          <div class="mt-1" style="white-space:pre-wrap">${H.esc(r.summary)}</div>
-          ${diff ? `<details class="mt-2"><summary class="small text-muted">查看 Diff</summary><pre class="json">${H.esc(String(diff).slice(0, 20000))}</pre></details>` : ''}
+      const deployLine = facts && facts.commitHash
+        ? `<div class="mt-1"><span class="fact">${t('conv.notApplied')}</span></div>` : '';
+      return `<div class="card mb-2">
+        <div class="card-head">
+          ${H.typeChip('result')}<span class="chip">#${r.id}</span>
+          <span class="card-meta">${t('common.taskWord')} #${r.task_id} · ${H.esc(r.worker)} · <span title="${H.esc(r.created_at)}">${H.fmtTime(r.created_at)}</span></span>
+          <span class="spacer"></span>
+        </div>
+        <div class="card-body">
+          ${H.factsHtml(facts)}
+          ${deployLine}
+          <div class="mt-1">${mdLite(r.summary)}</div>
+          ${diff ? `<details class="fold"><summary>${t('common.viewDiff')}</summary><pre class="json">${H.esc(String(diff).slice(0, 20000))}</pre></details>` : ''}
+        </div>
+        <div class="card-foot">${actions.join(' ')}</div>
+      </div>`;
+    }
+
+    function applyItem(ar) {
+      const stat = ar.diff_stat_json ? JSON.parse(ar.diff_stat_json) : null;
+      const files = ar.changed_files_json ? JSON.parse(ar.changed_files_json) : [];
+      return `<div class="card mb-2">
+        <div class="card-head">
+          ${H.typeChip('apply')}
+          ${H.badge(ar.state)}
+          <span class="card-meta">apply #${ar.id} · ${t('common.taskWord')} #${ar.task_id}</span>
+          <span class="spacer"></span>
+        </div>
+        <div class="card-body">
+          ${ar.source_commit ? `<div class="small" style="margin-bottom:6px">${t('conv.sourceCommit')}: <code>${H.esc(String(ar.source_commit).slice(0, 12))}</code>${ar.base_commit ? ` · ${t('conv.base')} <code>${H.esc(String(ar.base_commit).slice(0, 12))}</code>` : ''}</div>` : ''}
+          ${ar.commit_subject ? `<div class="small text-muted">${H.esc(ar.commit_subject)}</div>` : ''}
+          ${stat ? `<div class="small">${stat.files} ${t('common.filesUnit')} +${stat.additions} -${stat.deletions}${files.length ? '：' + H.esc(files.map((f) => f.path).join('、').slice(0, 160)) : ''}</div>` : ''}
+          ${ar.state === 'PREPARED' ? `<div class="small mt-1 text-muted">${t('conv.applyHint')}<code>bash ~/wechat-linux-research/hub/scripts/apply-hub.sh ${ar.id}</code></div>` : ''}
         </div>
       </div>`;
     }
@@ -148,85 +167,231 @@
     function approvalItem(a) {
       const c = a.candidate;
       if (!c || a.state !== 'PENDING') return '';
-      return `<div class="card mb-2 border-start border-4 border-warning">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div><span class="badge bg-warning">等待批准</span> <strong>${H.esc(c.title)}</strong>
-              <span class="text-muted small">候选 #${c.id}</span></div>
-            <div>
-              <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${H.esc(c.title).replace(/'/g, "\\'")}')">批准</button>
-              <button class="btn btn-sm btn-danger" onclick="window.hubConv.reject(${c.id})">拒绝</button>
-            </div>
-          </div>
-          ${c.description ? `<div class="text-muted small mt-1">${H.esc(c.description)}</div>` : ''}
+      return `<div class="card mb-2">
+        <div class="card-head">
+          <span class="badge b-warning"><i class="dot"></i>${t('conv.waitingApproval')}</span>
+          <strong class="card-title">${H.esc(c.title)}</strong>
+          <span class="card-meta">${t('common.candidate')} #${c.id}</span>
+          <span class="spacer"></span>
+        </div>
+        ${c.description ? `<div class="card-body">${mdLite(c.description)}</div>` : ''}
+        <div class="card-foot">
+          <button class="btn btn-sm btn-danger" onclick="window.hubConv.reject(${c.id})">${t('common.reject')}</button>
+          <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${H.esc(c.title).replace(/'/g, "\\'")}')">${t('common.approve')}</button>
         </div>
       </div>`;
     }
 
-    function renderTimeline(tl) {
-      const box = document.getElementById('timeline');
-      const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-      const seenQ = new Set();
-      const seenP = new Set();
-      const html = tl.items.map((it) => {
+    /* ---------- 渲染与智能刷新（diff：无变化跳过 / 纯新增追加 / 变化整段重渲染并保状态） ---------- */
+    const RENDERED_TYPES = { message: 1, task: 1, execution: 1, result: 1, approval: 1, apply: 1 };
+    let view = null; // { fams, itemKeys:Set, lastAt }
+
+    function famSig(arr) {
+      const m = new Map();
+      (arr || []).forEach((x) => { if (x && x.id !== null && x.id !== undefined) m.set(String(x.id), JSON.stringify(x)); });
+      return m;
+    }
+    function families(tl) {
+      return {
+        messages: famSig(tl.messages), tasks: famSig(tl.tasks), executions: famSig(tl.executions),
+        results: famSig(tl.results), approvals: famSig(tl.approvals), candidates: famSig(tl.candidates),
+        questions: famSig(tl.questions), permissions: famSig(tl.permissions), applyRequests: famSig(tl.applyRequests),
+      };
+    }
+    function famsEqual(a, b) {
+      const ka = Object.keys(a);
+      if (ka.length !== Object.keys(b).length) return false;
+      for (const k of ka) {
+        const ma = a[k]; const mb = b[k];
+        if (!mb || ma.size !== mb.size) return false;
+        for (const [id, sig] of ma) if (mb.get(id) !== sig) return false;
+      }
+      return true;
+    }
+    /* 返回 'none'（完全一致）| 'added'（仅新增行，无删除无变化）| 'changed' */
+    function classifyDiff(prev, cur) {
+      let onlyAdd = true;
+      let anyAdd = false;
+      for (const key of Object.keys(prev)) {
+        const pa = prev[key]; const ca = cur[key];
+        if (!ca) return 'changed';
+        if (pa.size > ca.size) return 'changed';
+        for (const [id, sig] of pa) {
+          if (!ca.has(id)) return 'changed';
+          if (ca.get(id) !== sig) return 'changed';
+        }
+        if (ca.size > pa.size) anyAdd = true;
+      }
+      if (!anyAdd) return 'none';
+      return onlyAdd ? 'added' : 'changed';
+    }
+    function itemKey(it) { return it.type + ':' + it.data.id; }
+    function stickBottom() {
+      const b = box();
+      return b.scrollHeight - b.scrollTop - b.clientHeight < 60;
+    }
+    function scrollToBottom() { const b = box(); b.scrollTop = b.scrollHeight; }
+    function renderItemsHtml(tl, items) {
+      const taskById = Object.fromEntries(tl.tasks.map((task) => [task.id, task]));
+      return items.map((it) => {
         if (it.type === 'message') return messageItem(it.data);
         if (it.type === 'task') return taskItem(it.data);
         if (it.type === 'execution') return executionItem(it.data, tl.questions, tl.permissions);
-        if (it.type === 'result') return resultItem(it.data);
+        if (it.type === 'result') return resultItem(it.data, taskById);
         if (it.type === 'approval') return approvalItem(it.data);
+        if (it.type === 'apply') return applyItem(it.data);
         return '';
       }).join('');
-      box.innerHTML = html || '<div class="text-muted">暂无消息。用下方输入框给 Hub 下达指令。</div>';
-      if (stick) box.scrollTop = box.scrollHeight;
+    }
+    function renderTimeline(tl) {
+      const html = renderItemsHtml(tl, tl.items);
+      box().innerHTML = html || H.emptyHtml('conversations', t('conv.empty'));
+    }
+    function captureDetails() {
+      return Array.from(box().querySelectorAll('details.fold')).map((d) => d.open);
+    }
+    function restoreDetails(states) {
+      const els = box().querySelectorAll('details.fold');
+      els.forEach((d, i) => { if (states[i]) d.open = true; });
+    }
+    function fullRefresh(tl) {
+      const b = box();
+      const wasStick = stickBottom();
+      const prevTop = b.scrollTop;
+      const detailStates = captureDetails();
+      renderTimeline(tl);
+      restoreDetails(detailStates);
+      if (wasStick) scrollToBottom(); else b.scrollTop = prevTop;
+    }
+
+    let loading = false;
+    let rerunQueued = false;
+    async function loadImpl() {
+      const tl = await H.api('GET', `/api/conversations/${convId}/timeline`);
+      const c = tl.conversation;
+      const titleEl = document.getElementById('title');
+      const newTitle = c.title || 'Conversation #' + c.id;
+      if (titleEl.textContent !== newTitle) titleEl.textContent = newTitle;
+      const meta = [];
+      meta.push(`<span class="tag">${H.esc(c.kind)}</span>`);
+      if (c.project_id) {
+        meta.push(`<a class="small" href="/project.html?id=${c.project_id}">${t('conv.projectLink')} →</a>`);
+      }
+      const metaHtml = meta.join(' ');
+      if (document.getElementById('meta').innerHTML !== metaHtml) document.getElementById('meta').innerHTML = metaHtml;
+
+      const cur = families(tl);
+      const keys = new Set(tl.items.map(itemKey));
+      const lastAt = tl.items.length ? tl.items[tl.items.length - 1].at : '';
+      if (!view) {
+        renderTimeline(tl);
+        view = { fams: cur, itemKeys: keys, lastAt };
+        scrollToBottom();
+        return;
+      }
+      const kind = classifyDiff(view.fams, cur);
+      if (kind === 'none') return;
+
+      if (kind === 'added') {
+        /* 纯新增：检查是否全部落在时间线末尾，且未涉及嵌套渲染族（提问/权限/候选） */
+        const additions = tl.items.filter((it) => !view.itemKeys.has(itemKey(it)));
+        const nestedTouched = additions.some((it) => !RENDERED_TYPES[it.type]);
+        const allAtEnd = additions.every((it) => it.at >= view.lastAt);
+        const onlyMessageAdd = additions.length === cur.messages.size - view.fams.messages.size && additions.every((it) => it.type === 'message');
+        if ((allAtEnd && !nestedTouched) || onlyMessageAdd) {
+          const html = renderItemsHtml(tl, additions);
+          if (html) {
+            const wasStick = stickBottom();
+            box().insertAdjacentHTML('beforeend', html);
+            if (wasStick) scrollToBottom();
+          }
+          view = { fams: cur, itemKeys: keys, lastAt };
+          return;
+        }
+      }
+      fullRefresh(tl);
+      view = { fams: cur, itemKeys: keys, lastAt };
     }
 
     async function load() {
-      const tl = await H.api('GET', `/api/conversations/${convId}/timeline`);
-      const c = tl.conversation;
-      document.getElementById('title').textContent = c.title || 'Conversation #' + c.id;
-      const meta = [];
-      meta.push(`<span class="badge bg-secondary">${H.esc(c.kind)}</span>`);
-      if (c.project_id) {
-        meta.push(`<a class="small" href="/project.html?id=${c.project_id}">所属项目 →</a>`);
+      if (loading) { rerunQueued = true; return; }
+      loading = true;
+      try {
+        await loadImpl();
+      } finally {
+        loading = false;
+        if (rerunQueued) { rerunQueued = false; load(); }
       }
-      document.getElementById('meta').innerHTML = meta.join(' ');
-      renderTimeline(tl);
     }
 
     window.hubConv = {
-      async cancelTask(id) {
-        try { await H.api('POST', `/api/tasks/${id}/cancel`, {}); load(); } catch (e) { H.formError(e); }
+      load,
+      async cancelTask(id, btn) {
+        try {
+          await H.withButton(btn, () => H.api('POST', `/api/tasks/${id}/cancel`, {}));
+          load();
+        } catch (e) { H.formError(e); }
       },
-      async anotherRun(id) {
-        const scenario = prompt('场景（SUCCESS/FAIL/WAIT_FOR_USER/WAIT_FOR_APPROVAL/TIMEOUT/CRASH_ONCE_THEN_SUCCESS）', 'SUCCESS');
-        if (scenario === null) return;
-        try { await H.api('POST', `/api/tasks/${id}/executions`, { scenario }); load(); } catch (e) { H.formError(e); }
+      anotherRun(id) {
+        H.modalPrompt({
+          title: t('modal.chooseScenario'),
+          fields: [{ type: 'select', name: 'scenario', options: H.SCENARIOS, value: 'SUCCESS' }],
+          okText: t('common.confirm'),
+          onOk: async (v) => {
+            await H.api('POST', `/api/tasks/${id}/executions`, { scenario: v.scenario });
+            load();
+          },
+        });
       },
       async answer(ev, exId, qId) {
         ev.preventDefault();
-        try { await H.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: ev.target.elements.a.value }); load(); }
-        catch (e) { H.formError(e); }
+        const btn = ev.target.querySelector('button');
+        try {
+          await H.withButton(btn, () => H.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: ev.target.elements.a.value }));
+          load();
+        } catch (e) { H.formError(e); }
         return false;
       },
-      async perm(exId, pId, decision) {
-        try { await H.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }); load(); }
-        catch (e) { H.formError(e); }
+      async perm(exId, pId, decision, btn) {
+        try {
+          await H.withButton(btn, () => H.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }));
+          load();
+        } catch (e) { H.formError(e); }
       },
-      async complete(rId) {
-        try { await H.api('POST', `/api/results/${rId}/review`, { action: 'complete' }); load(); }
-        catch (e) { H.formError(e); }
+      async complete(rId, btn) {
+        try {
+          await H.withButton(btn, () => H.api('POST', `/api/results/${rId}/review`, { action: 'complete' }));
+          load();
+        } catch (e) { H.formError(e); }
       },
-      async anotherFromResult(rId) {
-        const scenario = prompt('场景', 'SUCCESS');
-        if (scenario === null) return;
-        try { await H.api('POST', `/api/results/${rId}/review`, { action: 'another_execution', scenario }); load(); }
-        catch (e) { H.formError(e); }
+      anotherFromResult(rId) {
+        H.modalPrompt({
+          title: t('modal.chooseScenario'),
+          fields: [{ type: 'select', name: 'scenario', options: H.SCENARIOS, value: 'SUCCESS' }],
+          okText: t('common.confirm'),
+          onOk: async (v) => {
+            await H.api('POST', `/api/results/${rId}/review`, { action: 'another_execution', scenario: v.scenario });
+            load();
+          },
+        });
       },
-      async reject(cId) {
-        const reason = prompt('拒绝原因（可留空）');
-        if (reason === null) return;
-        try { await H.api('POST', `/api/candidates/${cId}/reject`, { reason: reason || null }); load(); }
-        catch (e) { H.formError(e); }
+      reject(cId) {
+        H.modalPrompt({
+          title: `${t('modal.rejectTitle')} #${cId}`,
+          fields: [{ type: 'textarea', name: 'reason', placeholder: t('tasks.rejectPh') }],
+          okText: t('common.reject'),
+          okClass: 'btn-danger',
+          onOk: async (v) => {
+            await H.api('POST', `/api/candidates/${cId}/reject`, { reason: v.reason || null });
+            load();
+          },
+        });
+      },
+      async prepareApply(rId, btn) {
+        try {
+          await H.withButton(btn, () => H.api('POST', `/api/results/${rId}/prepare-apply`, {}));
+          load();
+        } catch (e) { H.formError(e); }
       },
     };
 
@@ -236,12 +401,11 @@
       const text = box.value.trim();
       if (!text) return false;
       const plain = document.getElementById('plain-mode').checked;
+      const btn = ev.target.querySelector('button.btn');
       try {
-        if (plain) {
-          await H.api('POST', `/api/conversations/${convId}/messages`, { text });
-        } else {
-          await H.api('POST', '/api/user-commands', { text, conversationId: Number(convId) });
-        }
+        await H.withButton(btn, () => plain
+          ? H.api('POST', `/api/conversations/${convId}/messages`, { text })
+          : H.api('POST', '/api/user-commands', { text, conversationId: Number(convId) }));
         box.value = '';
         load();
       } catch (e) { H.formError(e); }
@@ -249,10 +413,11 @@
     };
 
     (async () => {
-      if (!convId) { document.getElementById('timeline').innerHTML = '<div class="text-danger">缺少会话 id</div>'; return; }
+      if (!convId) { document.getElementById('timeline').innerHTML = `<div class="text-danger">${t('conv.missingId')}</div>`; return; }
+      document.getElementById('timeline').innerHTML = H.skeletonList(3);
       const boot = await H.api('GET', '/api/bootstrap/status').catch(() => null);
       const isHome = boot && String(boot.globalConversation.id) === String(convId);
-      await H.page('Conversation', isHome ? 'home' : 'conversations', { noAutoReload: true });
+      await H.page(t('title.conversation'), isHome ? 'home' : 'conversations', { noAutoReload: true });
       load();
       setInterval(() => {
         const el = document.activeElement;

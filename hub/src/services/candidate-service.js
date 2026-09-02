@@ -4,7 +4,7 @@ const { applyTransition } = require('./state-machine');
 const { appendDomainEvent, appendTransition } = require('./audit');
 const {
   CANDIDATE_TRANSITIONS, APPROVAL_TRANSITIONS, INBOX_TRANSITIONS,
-  DEFAULT_CAPABILITIES, SCENARIOS,
+  DEFAULT_CAPABILITIES, SELF_PROJECT_TEMPLATE, CAPABILITY_RANK, SCENARIOS,
 } = require('../domain/states');
 const { dispatchId } = require('../domain/ids');
 const {
@@ -20,6 +20,7 @@ const { insertGrant } = require('../domain/execution-grant');
 const { appendOutbox } = require('../domain/outbox-event');
 const { findUserCommand, markConverted } = require('../domain/user-command');
 const { findOrCreateGlobalConversation, findConversation, insertMessage } = require('../domain/conversation');
+const { findProject } = require('../domain/project');
 const { actor } = require('../domain/actors');
 
 function insertCandidateWithApproval(db, { originType, originId, title, description, projectId, sourceEventId, reason, creator, ttlMs }) {
@@ -135,7 +136,23 @@ function approveCandidate(db, {
   }
   if (!SCENARIOS.includes(scenario)) throw new BadRequestError(`unknown scenario ${scenario}`);
   if (!['fake-worker', 'opencode', 'codex'].includes(worker)) throw new BadRequestError(`unknown worker ${worker}`);
-  const caps = Object.assign({}, DEFAULT_CAPABILITIES, capabilities || {});
+  const effProjectId = projectId || c.project_id;
+  const project = effProjectId ? findProject(db, effProjectId) : null;
+  const isSelfProject = project && project.project_type === 'SYSTEM_HUB';
+  let caps;
+  let effWorkspace = workspace || null;
+  if (isSelfProject) {
+    const selfWorkspace = cfg.selfDevWorkspace;
+    if (!selfWorkspace) throw new BadRequestError('self project requires selfDevWorkspace config');
+    caps = Object.assign({}, SELF_PROJECT_TEMPLATE);
+    for (const [k, v] of Object.entries(capabilities || {})) {
+      if (!CAPABILITY_RANK.hasOwnProperty(v)) continue;
+      if (CAPABILITY_RANK[v] < CAPABILITY_RANK[caps[k]]) caps[k] = v;
+    }
+    effWorkspace = selfWorkspace;
+  } else {
+    caps = Object.assign({}, DEFAULT_CAPABILITIES, capabilities || {});
+  }
   const cmdRow = db.prepare('SELECT conversation_id FROM user_commands WHERE candidate_id = ? LIMIT 1').get(candidateId);
   const conversationId = cmdRow ? cmdRow.conversation_id : null;
 
@@ -152,7 +169,7 @@ function approveCandidate(db, {
     });
     const taskId = insertTask(db, {
       candidateId, title: title || c.title, description: description || c.description,
-      projectId: projectId || c.project_id, conversationId,
+      projectId: effProjectId, conversationId,
     });
     appendTransition(db, {
       entityType: 'task', entityId: taskId, fromState: null, toState: 'OPEN', actor: decider, reason: 'task created',
@@ -160,7 +177,7 @@ function approveCandidate(db, {
     const taskRow = findTask(db, taskId);
     const grantId = insertGrant(db, {
       taskId, taskVersion: taskRow.version, worker,
-      workspace: workspace || null, capabilities: caps,
+      workspace: effWorkspace, capabilities: caps,
       issuedByType: decider.actorType, issuedById: decider.actorId,
     });
     appendDomainEvent(db, {

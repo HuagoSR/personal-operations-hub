@@ -4,48 +4,154 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Approvals</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
-  <div class="container">
-    <h4>Approvals</h4>
-    <div id="list"></div>
+  <div class="container appr-page">
+    <div class="d-flex align-items-center gap-2">
+      <h4 class="mb-0" data-i18n="title.approvals">审批</h4>
+      <span class="badge b-warning" id="attention-count">0</span>
+    </div>
+    <div class="text-muted small mb-2" data-i18n="appr.desc">需要你关注的事项：任务批准 / 权限请求 / Worker 提问（与全局 Approvals 页同实体、幂等）</div>
+    <div class="appr-grid">
+      <section class="panel">
+        <div class="panel-head"><span id="tc-candidates"></span><span class="panel-title" data-i18n="appr.taskApprovals">任务批准</span><span class="spacer"></span><span class="badge b-warning" id="cnt-candidates">0</span></div>
+        <div class="panel-body" id="candidate-approvals"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span id="tc-permissions"></span><span class="panel-title" data-i18n="appr.permissions">权限请求</span><span class="spacer"></span><span class="badge b-warning" id="cnt-permissions">0</span></div>
+        <div class="panel-body" id="permissions"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span id="tc-questions"></span><span class="panel-title" data-i18n="appr.questions">Worker 提问</span><span class="spacer"></span><span class="badge b-warning" id="cnt-questions">0</span></div>
+        <div class="panel-body" id="questions"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span id="tc-apply"></span><span class="panel-title" data-i18n="appr.applyRequests">部署待办（Hub Self Update）</span><span class="spacer"></span><span class="badge b-warning" id="cnt-apply">0</span></div>
+        <div class="panel-body" id="apply-requests"></div>
+      </section>
+    </div>
   </div>
+  <script src="/i18n.js"></script>
+  <script src="/md.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Approvals', 'approvals');
+    window.hub.page(t('title.approvals'), 'approvals');
     (async () => {
-      const rows = await window.hub.api('GET', '/api/approvals');
-      const cands = await window.hub.api('GET', '/api/candidates');
-      const byId = Object.fromEntries(cands.map((c) => [c.id, c]));
-      document.getElementById('list').innerHTML = rows.map((a) => {
-        const c = byId[a.candidate_id] || {};
-        return `
-        <div class="card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <div>
-                <strong>Approval #${a.id}</strong> ${window.hub.badge(a.state)}
-                <span class="text-muted small">${window.hub.esc(a.approval_type)}</span>
-                ${a.expires_at ? `<span class="text-muted small">过期于 ${window.hub.esc(a.expires_at)}</span>` : ''}
-                ${c.title ? `<div class="mt-1">${window.hub.esc(c.title)} <span class="badge bg-secondary">${window.hub.esc(c.origin_type)}</span></div>` : ''}
-              </div>
-              <div>
-                ${a.state === 'PENDING' && c.state === 'OPEN' ? `
-                  <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${a.candidate_id}, '${window.hub.esc(c.title || '').replace(/'/g, "\\'")}')">批准</button>
-                  <button class="btn btn-sm btn-danger" onclick="rej(${a.candidate_id})">拒绝</button>` : ''}
-              </div>
-            </div>
+      const a = await window.hub.api('GET', '/api/attention');
+      document.getElementById('attention-count').textContent = t('appr.countText').replace('{n}', a.count);
+      document.getElementById('tc-candidates').innerHTML = window.hub.typeChip('approval');
+      document.getElementById('tc-permissions').innerHTML = window.hub.typeChip('perm');
+      document.getElementById('tc-questions').innerHTML = window.hub.typeChip('question');
+      document.getElementById('tc-apply').innerHTML = window.hub.typeChip('apply');
+      document.getElementById('cnt-candidates').textContent = a.candidateApprovals.length;
+      document.getElementById('cnt-permissions').textContent = a.openPermissions.length;
+      document.getElementById('cnt-questions').textContent = a.openQuestions.length;
+      document.getElementById('cnt-apply').textContent = a.applyRequests.length;
+
+      document.getElementById('candidate-approvals').innerHTML = a.candidateApprovals.map((ap) => {
+        const exp = ap.expires_at ? ` · ${t('appr.expiresAt')} ${window.hub.esc(ap.expires_at)}` : '';
+        return `<div class="card">
+          <div class="card-head">
+            <span class="card-title">${window.hub.esc(ap.candidate_title)}</span>
+            <span class="tag">${window.hub.esc(ap.origin_type)}</span>
+            <span class="card-meta">${t('common.candidate')} #${ap.candidate_id}${exp}</span>
+            <span class="spacer"></span>
+          </div>
+          ${ap.candidate_description ? `<div class="card-body">${window.mdLite(ap.candidate_description)}</div>` : ''}
+          <div class="card-foot">
+            <button class="btn btn-sm btn-danger" onclick="reject(${ap.candidate_id})">${t('common.reject')}</button>
+            <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${ap.candidate_id}, '${window.hub.esc(ap.candidate_title).replace(/'/g, "\\'")}')">${t('common.approve')}</button>
           </div>
         </div>`;
-      }).join('') || '<div class="text-muted">暂无审批记录</div>';
-      window.rej = async (candidateId) => {
-        const reason = prompt('拒绝原因（可留空）');
-        if (reason === null) return;
-        try { await window.hub.api('POST', `/api/candidates/${candidateId}/reject`, { reason: reason || null }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      }).join('') || `<div class="panel-empty">${t('appr.empty.candidates')}</div>`;
+
+      document.getElementById('permissions').innerHTML = a.openPermissions.map((p) => {
+        const convLink = p.conversation_id ? `<a class="small" href="/conversation.html?id=${p.conversation_id}">${t('common.conversation')} →</a>` : '';
+        return `<div class="card">
+          <div class="card-head">
+            <span class="type-chip">${window.hub.icon('key', 13)}${t('type.perm')}</span>
+            <span class="chip">${window.hub.esc(p.capability)}</span>
+            ${p.high_risk ? `<span class="badge b-danger"><i class="dot"></i>${t('common.highRisk')}</span>` : ''}
+            <span class="spacer"></span>
+            ${p.expires_at ? `<span class="card-meta">${t('appr.expiresAt')} ${window.hub.esc(p.expires_at)}</span>` : ''}
+          </div>
+          <div class="card-body">
+            <span class="card-meta">${t('common.execWord')} #${p.execution_id} · ${t('common.taskWord')} #${p.task_id} ${window.hub.esc(p.task_title || '')} · ${window.hub.esc(p.worker)} ${convLink}</span>
+          </div>
+          <div class="card-foot">
+            <button class="btn btn-sm btn-danger" onclick="perm(${p.execution_id}, ${p.id}, 'deny', this)">${t('common.deny')}</button>
+            <button class="btn btn-sm btn-success" onclick="perm(${p.execution_id}, ${p.id}, 'allow', this)">${t('common.allow')}</button>
+          </div>
+        </div>`;
+      }).join('') || `<div class="panel-empty">${t('appr.empty.permissions')}</div>`;
+
+      document.getElementById('questions').innerHTML = a.openQuestions.map((q) => {
+        const convLink = q.conversation_id ? `<a class="small" href="/conversation.html?id=${q.conversation_id}">${t('common.conversation')} →</a>` : '';
+        return `<div class="card">
+          <div class="card-head">
+            <span class="type-chip">${window.hub.icon('question', 13)}${t('type.question')}</span>
+            <span class="card-meta">${t('common.execWord')} #${q.execution_id} · ${t('common.taskWord')} #${q.task_id} ${window.hub.esc(q.task_title || '')} ${convLink}</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="card-body">
+            <div class="card-text">${window.mdLite(q.question)}</div>
+            <form class="d-flex gap-1 mt-2" onsubmit="return answer(event, ${q.execution_id}, ${q.id})">
+              <input class="form-control form-control-sm" name="a" placeholder="${t('common.answerPh')}">
+              <button class="btn btn-sm btn-primary">${t('common.reply')}</button>
+            </form>
+          </div>
+        </div>`;
+      }).join('') || `<div class="panel-empty">${t('appr.empty.questions')}</div>`;
+
+      document.getElementById('apply-requests').innerHTML = a.applyRequests.map((ar) => {
+        const stat = ar.diff_stat_json ? JSON.parse(ar.diff_stat_json) : null;
+        const files = ar.changed_files_json ? JSON.parse(ar.changed_files_json) : [];
+        return `<div class="card">
+          <div class="card-head">
+            <span class="type-chip">${window.hub.icon('package', 13)}${t('type.apply')}</span>
+            ${window.hub.badge(ar.state)}
+            <span class="card-meta">apply #${ar.id} · ${t('common.taskWord')} #${ar.task_id}${ar.source_commit ? ' · commit ' + window.hub.esc(String(ar.source_commit).slice(0, 12)) : ''}</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="card-body">
+            ${ar.commit_subject ? `<div class="small text-muted">${window.hub.esc(ar.commit_subject)}</div>` : ''}
+            ${stat ? `<div class="small">${stat.files} ${t('common.filesUnit')} +${stat.additions} -${stat.deletions}${files.length ? '：' + window.hub.esc(files.map((f) => f.path).join('、').slice(0, 160)) : ''}</div>` : ''}
+            <div class="small mt-1 text-muted">${t('appr.applyHintManual')}<code>bash ~/wechat-linux-research/hub/scripts/apply-hub.sh ${ar.id}</code>${t('appr.applyHintRollback')}<code>bash ~/wechat-linux-research/hub/scripts/rollback-hub.sh latest</code></div>
+          </div>
+        </div>`;
+      }).join('') || `<div class="panel-empty">${t('appr.empty.apply')}</div>`;
+
+      window.reject = (candidateId) => {
+        window.hub.modalPrompt({
+          title: `${t('modal.rejectTitle')} #${candidateId}`,
+          fields: [{ type: 'textarea', name: 'reason', placeholder: t('tasks.rejectPh') }],
+          okText: t('common.reject'),
+          okClass: 'btn-danger',
+          onOk: async (v) => {
+            await window.hub.api('POST', `/api/candidates/${candidateId}/reject`, { reason: v.reason || null });
+            location.reload();
+          },
+        });
+      };
+      window.perm = async (exId, pId, decision, btn) => {
+        try {
+          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }));
+          location.reload();
+        } catch (e) { window.hub.formError(e); }
+      };
+      window.answer = async (ev, exId, qId) => {
+        ev.preventDefault();
+        const btn = ev.target.querySelector('button');
+        try {
+          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: ev.target.elements.a.value }));
+          location.reload();
+        } catch (e) { window.hub.formError(e); }
+        return false;
       };
     })().catch(window.hub.formError);
   </script>

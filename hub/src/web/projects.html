@@ -4,50 +4,58 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Projects</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
   <div class="container">
-    <h4>Projects</h4>
+    <h4 data-i18n="title.projects">项目管理</h4>
     <form class="row g-2 mb-3" onsubmit="return createProject(event)">
-      <div class="col-4"><input class="form-control" name="name" placeholder="名称" required></div>
-      <div class="col-4"><input class="form-control" name="description" placeholder="描述"></div>
-      <div class="col-2"><input class="form-control" name="workspace" placeholder="workspace 路径（仅登记）"></div>
-      <div class="col-2"><button class="btn btn-primary w-100">创建项目</button></div>
+      <div class="col-4"><input class="form-control" name="name" data-i18n-ph="proj.namePh" placeholder="名称" required></div>
+      <div class="col-4"><input class="form-control" name="description" data-i18n-ph="proj.descPh" placeholder="描述"></div>
+      <div class="col-2"><input class="form-control" name="workspace" data-i18n-ph="proj.workspacePh" placeholder="workspace 路径（仅登记）"></div>
+      <div class="col-2"><button class="btn btn-primary w-100" data-i18n="proj.create">创建项目</button></div>
     </form>
-    <h5 class="mt-3">系统项目</h5>
+    <h5 class="mt-3" data-i18n="proj.systemProjects">系统项目</h5>
     <div id="system-list"></div>
-    <h5 class="mt-4">我的项目</h5>
+    <h5 class="mt-4" data-i18n="proj.myProjects">我的项目</h5>
     <div id="user-list"></div>
   </div>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Projects', 'projects-admin');
+    window.hub.page(t('title.projects'), 'projects-admin');
     (async () => {
+      const sysBox = document.getElementById('system-list');
+      const userBox = document.getElementById('user-list');
+      sysBox.innerHTML = window.hub.skeletonList(1);
+      userBox.innerHTML = window.hub.skeletonList(2);
       const rows = await window.hub.api('GET', '/api/projects');
       const card = (p) => `
         <div class="card">
           <div class="card-body">
             <a href="/project.html?id=${p.id}"><strong>${window.hub.esc(p.name)}</strong></a>
-            ${p.project_type === 'SYSTEM_HUB' ? '<span class="badge bg-dark ms-2">系统项目（不可删除）</span>' : ''}
+            ${p.project_type === 'SYSTEM_HUB' ? `<span class="tag ms-2">${t('proj.systemTag')}</span>` : ''}
             <span class="text-muted small ms-2">#${p.id}</span>
             ${p.description ? `<div class="text-muted small">${window.hub.esc(p.description)}</div>` : ''}
-            ${p.workspace_path ? `<div class="text-muted small">workspace: ${window.hub.esc(p.workspace_path)}（仅登记元数据，Hub 不访问）</div>` : ''}
+            ${p.workspace_path ? `<div class="text-muted small">workspace: ${window.hub.esc(p.workspace_path)}（${t('proj.workspaceNote')}）</div>` : ''}
           </div>
         </div>`;
-      document.getElementById('system-list').innerHTML = rows.filter((p) => p.project_type === 'SYSTEM_HUB').map(card).join('') || '<div class="text-muted">无系统项目</div>';
-      document.getElementById('user-list').innerHTML = rows.filter((p) => p.project_type !== 'SYSTEM_HUB').map(card).join('') || '<div class="text-muted">暂无项目</div>';
+      document.getElementById('system-list').innerHTML = rows.filter((p) => p.project_type === 'SYSTEM_HUB').map(card).join('') || window.hub.emptyHtml('folder', t('proj.noSystem'));
+      document.getElementById('user-list').innerHTML = rows.filter((p) => p.project_type !== 'SYSTEM_HUB').map(card).join('') || window.hub.emptyHtml('folder', t('proj.noProjects'));
       window.createProject = async (ev) => {
         ev.preventDefault();
         const f = ev.target;
+        const btn = f.querySelector('button');
         try {
-          await window.hub.api('POST', '/api/projects', {
+          await window.hub.withButton(btn, () => window.hub.api('POST', '/api/projects', {
             name: f.name.value,
             description: f.description.value || null,
             workspacePath: f.workspace.value || null,
-          });
+          }));
           location.reload();
         } catch (e) { window.hub.formError(e); }
         return false;

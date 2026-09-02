@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Project</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
@@ -13,72 +15,78 @@
     <h4 id="title">Project</h4>
     <div id="meta" class="text-muted small mb-3"></div>
     <div class="d-flex justify-content-between align-items-center mt-2">
-      <h5 class="mb-0">Conversations</h5>
-      <button class="btn btn-sm btn-outline-primary" onclick="toggleConvForm()">+ 新建会话</button>
+      <h5 class="mb-0" data-i18n="proj.conversations">会话</h5>
+      <button class="btn btn-sm btn-outline-primary" data-i18n="proj.newConversation" onclick="toggleConvForm()">+ 新建会话</button>
     </div>
     <form id="conv-form" class="row g-2 mt-2 mb-3" style="display:none" onsubmit="return createConv(event)">
-      <div class="col-8"><input class="form-control form-control-sm" name="title" placeholder="会话标题"></div>
-      <div class="col-4"><button class="btn btn-sm btn-primary w-100">创建</button></div>
+      <div class="col-8"><input class="form-control form-control-sm" name="title" data-i18n-ph="proj.convTitlePh" placeholder="会话标题"></div>
+      <div class="col-4"><button class="btn btn-sm btn-primary w-100" data-i18n="common.create">创建</button></div>
     </form>
     <div id="conversations"></div>
-    <h5 class="mt-4">Tasks</h5>
+    <h5 class="mt-4" data-i18n="proj.tasksTitle">任务</h5>
     <div id="tasks"></div>
     <details class="mt-4">
-      <summary class="text-muted">Events（审计视图）</summary>
+      <summary class="text-muted" data-i18n="proj.events">审计事件（审计视图）</summary>
       <div id="events"></div>
     </details>
   </div>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Project', 'projects');
+    window.hub.page(t('title.project'), 'projects');
     (async () => {
       const id = new URLSearchParams(location.search).get('id');
       const d = await window.hub.api('GET', '/api/projects/' + id);
       const p = d.project;
       const isHub = p.project_type === 'SYSTEM_HUB';
       document.getElementById('title').innerHTML =
-        `${window.hub.esc(p.name)} ${isHub ? '<span class="badge bg-dark">系统项目</span>' : ''}`;
+        `${window.hub.esc(p.name)} ${isHub ? `<span class="tag">${t('proj.tagSystemFull')}</span>` : ''}`;
       document.getElementById('meta').innerHTML = [
         p.description ? window.hub.esc(p.description) : '',
         `#${p.id} · ${window.hub.esc(p.state)}`,
-        p.workspace_path ? `workspace: ${window.hub.esc(p.workspace_path)}（仅登记元数据，Hub 不访问）` : '',
+        p.workspace_path ? `workspace: ${window.hub.esc(p.workspace_path)}（${t('proj.workspaceNote')}）` : '',
       ].filter(Boolean).join(' · ');
+      const convBox = document.getElementById('conversations');
+      const tasksBox = document.getElementById('tasks');
+      convBox.innerHTML = window.hub.skeletonList(2);
+      tasksBox.innerHTML = window.hub.skeletonList(2);
       document.getElementById('conversations').innerHTML = d.conversations.map((c) => `
         <div class="card">
           <div class="card-body py-2">
             <a href="/conversation.html?id=${c.id}"><strong>${window.hub.esc(c.title || 'Conversation #' + c.id)}</strong></a>
-            ${c.is_default ? '<span class="badge bg-secondary ms-1">默认</span>' : ''}
+            ${c.is_default ? `<span class="tag ms-1">${t('proj.defaultTag')}</span>` : ''}
             <span class="text-muted small ms-2">#${c.id}</span>
           </div>
-        </div>`).join('') || '<div class="text-muted">暂无会话</div>';
-      document.getElementById('tasks').innerHTML = d.tasks.map((t) => `
+        </div>`).join('') || window.hub.emptyHtml('conversations', t('proj.noConversations'));
+      document.getElementById('tasks').innerHTML = d.tasks.map((task) => `
         <div class="card">
           <div class="card-body py-2">
             <div class="d-flex justify-content-between">
               <div>
-                ${t.conversation_id
-                  ? `<a href="/conversation.html?id=${t.conversation_id}"><strong>#${t.id} ${window.hub.esc(t.title)}</strong></a>`
-                  : `<strong>#${t.id} ${window.hub.esc(t.title)}</strong>`}
-                ${window.hub.badge(t.state)}
+                ${task.conversation_id
+                  ? `<a href="/conversation.html?id=${task.conversation_id}"><strong>#${task.id} ${window.hub.esc(task.title)}</strong></a>`
+                  : `<strong>#${task.id} ${window.hub.esc(task.title)}</strong>`}
+                ${window.hub.badge(task.state)}
               </div>
-              <a class="btn btn-sm btn-outline-secondary" href="/results.html">查看结果</a>
+              <a class="btn btn-sm btn-outline-secondary" href="/results.html">${t('common.viewResults')}</a>
             </div>
           </div>
-        </div>`).join('') || '<div class="text-muted">暂无任务</div>';
+        </div>`).join('') || window.hub.emptyHtml('tasks', t('proj.noTasks'));
       document.getElementById('events').innerHTML = d.events.map((e) =>
         `<div class="small border rounded p-1 mb-1">#${e.id} ${window.hub.esc(e.event_type)} ${window.hub.esc(e.created_at)}</div>`
-      ).join('') || '<div class="text-muted">暂无事件</div>';
+      ).join('') || window.hub.emptyCenter(t('proj.noEvents'));
       window.toggleConvForm = () => {
         const f = document.getElementById('conv-form');
         f.style.display = f.style.display === 'none' ? 'flex' : 'none';
       };
       window.createConv = async (ev) => {
         ev.preventDefault();
+        const btn = ev.target.querySelector('button');
         try {
-          await window.hub.api('POST', '/api/conversations', {
+          await window.hub.withButton(btn, () => window.hub.api('POST', '/api/conversations', {
             title: ev.target.title.value || null,
             projectId: Number(id),
-          });
+          }));
           location.reload();
         } catch (e) { window.hub.formError(e); }
         return false;

@@ -4,37 +4,41 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inbox</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
   <div class="container">
-    <h4>Inbox</h4>
+    <h4 data-i18n="title.inbox">收件箱</h4>
     <div id="items"></div>
   </div>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Inbox', 'inbox');
+    window.hub.page(t('title.inbox'), 'inbox');
     (async () => {
-      const items = await window.hub.api('GET', '/api/inbox');
       const el = document.getElementById('items');
-      if (!items.length) { el.innerHTML = '<div class="text-muted">暂无 Inbox 条目（@提及或私聊消息会出现在这里）</div>'; return; }
+      el.innerHTML = window.hub.skeletonList();
+      const items = await window.hub.api('GET', '/api/inbox');
+      if (!items.length) { el.innerHTML = window.hub.emptyHtml('inbox', t('inbox.empty')); return; }
       el.innerHTML = items.map((i) => `
         <div class="card">
           <div class="card-body">
             <div class="d-flex justify-content-between">
               <div>
                 ${window.hub.badge(i.state)}
-                ${i.priority_hint === 'mentioned' ? '<span class="badge bg-danger">@提及</span>' : ''}
+                ${i.priority_hint === 'mentioned' ? `<span class="badge b-danger"><i class="dot"></i>${t('inbox.mentioned')}</span>` : ''}
                 <strong>${window.hub.esc(i.chat_name || i.source)}</strong>
                 <span class="text-muted small">#${i.id}</span>
               </div>
               <div>
-                <button class="btn btn-sm btn-outline-secondary" onclick="detail(${i.id})">查看上下文</button>
-                <button class="btn btn-sm btn-outline-success" onclick="convert(${i.id})">创建任务</button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'ignore')">忽略</button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'archive')">归档</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="detail(${i.id})">${t('common.viewContext')}</button>
+                <button class="btn btn-sm btn-outline-success" onclick="convert(${i.id})">${t('common.createTask')}</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'ignore', this)">${t('common.ignore')}</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'archive', this)">${t('common.archive')}</button>
               </div>
             </div>
             <div id="detail-${i.id}" class="mt-2 small" style="display:none"></div>
@@ -47,17 +51,22 @@
         box.style.display = 'block';
         box.innerHTML = '<pre class="json">' + d.rawMessages.map((m) => window.hub.esc(JSON.stringify(JSON.parse(m.raw_json), null, 2))).join('\n') + '</pre>';
       };
-      window.act = async (id, action) => {
-        try { await window.hub.api('POST', `/api/inbox/${id}/${action}`, {}); location.reload(); }
-        catch (e) { window.hub.formError(e); }
-      };
-      window.convert = async (id) => {
-        const title = prompt('任务标题（可留空使用默认）');
-        if (title === null) return;
+      window.act = async (id, action, btn) => {
         try {
-          await window.hub.api('POST', `/api/inbox/${id}/convert`, { title: title || null });
+          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/inbox/${id}/${action}`, {}));
           location.reload();
         } catch (e) { window.hub.formError(e); }
+      };
+      window.convert = (id) => {
+        window.hub.modalPrompt({
+          title: t('common.createTask'),
+          fields: [{ type: 'text', name: 'title', placeholder: t('inbox.titlePrompt') }],
+          okText: t('common.createTask'),
+          onOk: async (v) => {
+            await window.hub.api('POST', `/api/inbox/${id}/convert`, { title: v.title || null });
+            location.reload();
+          },
+        });
       };
     })().catch(window.hub.formError);
   </script>

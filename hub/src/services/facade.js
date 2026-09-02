@@ -62,6 +62,19 @@ function createServiceFacade(db, ctx) {
     },
 
     dashboard() {
+      const projects = listProjects(db);
+      const projectActivity = [];
+      const globalCounts = {};
+      for (const r of db.prepare('SELECT state, COUNT(*) AS c FROM tasks WHERE project_id IS NULL GROUP BY state').all()) globalCounts[r.state] = r.c;
+      projectActivity.push({ project: null, taskCounts: globalCounts, lastTaskEventAt: null });
+      for (const p of projects) {
+        const byState = {};
+        for (const r of db.prepare('SELECT state, COUNT(*) AS c FROM tasks WHERE project_id = ? GROUP BY state').all(p.id)) byState[r.state] = r.c;
+        const last = db.prepare(`SELECT created_at FROM domain_events
+          WHERE entity_type = 'task' AND entity_id IN (SELECT id FROM tasks WHERE project_id = ?)
+          ORDER BY id DESC LIMIT 1`).get(p.id);
+        projectActivity.push({ project: p, taskCounts: byState, lastTaskEventAt: last ? last.created_at : null });
+      }
       return {
         inbox: count(db, "SELECT COUNT(*) AS c FROM inbox_items WHERE state = 'NEW'"),
         candidates: count(db, "SELECT COUNT(*) AS c FROM task_candidates WHERE state = 'OPEN'"),
@@ -70,9 +83,15 @@ function createServiceFacade(db, ctx) {
         waitingForUser: count(db, "SELECT COUNT(*) AS c FROM executions WHERE state IN ('WAITING_FOR_USER','WAITING_FOR_APPROVAL')"),
         resultsAvailable: count(db, "SELECT COUNT(*) AS c FROM tasks WHERE state IN ('RESULT_AVAILABLE','REVIEW')"),
         completedTasks: count(db, "SELECT COUNT(*) AS c FROM tasks WHERE state = 'COMPLETED'"),
-        projects: listProjects(db),
+        attention: count(db, "SELECT COUNT(*) AS c FROM approvals WHERE state = 'PENDING'")
+          + count(db, "SELECT COUNT(*) AS c FROM permission_requests WHERE state = 'OPEN'")
+          + count(db, "SELECT COUNT(*) AS c FROM execution_questions WHERE state = 'OPEN'")
+          + count(db, "SELECT COUNT(*) AS c FROM apply_requests WHERE state = 'PREPARED'"),
+        projects,
         outboxPending: count(db, "SELECT COUNT(*) AS c FROM outbox_events WHERE state IN ('PENDING','FAILED')"),
         outboxDead: count(db, "SELECT COUNT(*) AS c FROM outbox_events WHERE state = 'DEAD'"),
+        recentActivity: db.prepare('SELECT id, event_type, entity_type, entity_id, created_at FROM domain_events ORDER BY id DESC LIMIT 15').all(),
+        projectActivity,
       };
     },
 
@@ -170,6 +189,102 @@ function createServiceFacade(db, ctx) {
 
     taskList(state) {
       return listTasks(db, { state: state || undefined });
+    },
+
+    taskBuckets() {
+      const tasks = db.prepare('SELECT * FROM tasks ORDER BY id DESC LIMIT 500').all();
+      const latestExecution = (taskId) => db.prepare('SELECT * FROM executions WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId) || null;
+      const buckets = { running: [], waitingForMe: [], resultAvailable: [], failed: [], completed: [], cancelled: [] };
+      for (const t of tasks) {
+        const ex = latestExecution(t.id);
+        const entry = { task: t, latestExecution: ex };
+        if (t.state === 'COMPLETED') buckets.completed.push(entry);
+        else if (t.state === 'CANCELLED') buckets.cancelled.push(entry);
+        else if (ex && ex.state === 'FAILED' && !['RESULT_AVAILABLE', 'REVIEW'].includes(t.state)) buckets.failed.push(entry);
+        else if (ex && ['WAITING_FOR_USER', 'WAITING_FOR_APPROVAL'].includes(ex.state)) buckets.waitingForMe.push(entry);
+        else if (['RESULT_AVAILABLE', 'REVIEW'].includes(t.state)) buckets.resultAvailable.push(entry);
+        else buckets.running.push(entry);
+      }
+      return buckets;
+    },
+
+    attentionList() {
+      const candidateApprovals = db.prepare(`SELECT a.*, c.title AS candidate_title, c.origin_type, c.description AS candidate_description
+        FROM approvals a JOIN task_candidates c ON c.id = a.candidate_id
+        WHERE a.state = 'PENDING' ORDER BY a.id DESC LIMIT 200`).all();
+      const openPermissions = db.prepare(`SELECT p.*, e.id AS execution_id, e.task_id, e.worker, e.conversation_id,
+          t.title AS task_title
+        FROM permission_requests p
+        JOIN executions e ON e.id = p.execution_id
+        JOIN tasks t ON t.id = e.task_id
+        WHERE p.state = 'OPEN' ORDER BY p.id DESC LIMIT 200`).all();
+      const openQuestions = db.prepare(`SELECT q.*, e.id AS execution_id, e.task_id, e.worker, e.conversation_id,
+          t.title AS task_title
+        FROM execution_questions q
+        JOIN executions e ON e.id = q.execution_id
+        JOIN tasks t ON t.id = e.task_id
+        WHERE q.state = 'OPEN' ORDER BY q.id DESC LIMIT 200`).all();
+      const applyRequests = db.prepare("SELECT * FROM apply_requests WHERE state = 'PREPARED' ORDER BY id DESC LIMIT 50").all();
+      return {
+        count: candidateApprovals.length + openPermissions.length + openQuestions.length + applyRequests.length,
+        candidateApprovals,
+        openPermissions,
+        openQuestions,
+        applyRequests,
+      };
+    },
+
+    prepareApplyRequest(resultId) {
+      const result = findResult(db, resultId);
+      if (!result) throw new NotFoundError('result', resultId);
+      let facts = {};
+      try { facts = result.facts_json ? JSON.parse(result.facts_json) : {}; } catch (e) { }
+      if (!facts.commitHash) throw new BadRequestError('result has no commit hash; self-project execution required');
+      const task = findTask(db, result.task_id);
+      const project = task && task.project_id ? findProject(db, task.project_id) : null;
+      if (!project || project.project_type !== 'SYSTEM_HUB') {
+        throw new BadRequestError('prepare update is only available for Hub self project results');
+      }
+      return tx(db, () => {
+        const existing = db.prepare("SELECT * FROM apply_requests WHERE result_id = ? AND state = 'PREPARED'").get(resultId);
+        if (existing) return existing;
+        db.prepare("UPDATE apply_requests SET state = 'SUPERSEDED' WHERE state = 'PREPARED'").run();
+        const id = Number(db.prepare(`INSERT INTO apply_requests
+          (result_id, task_id, source_commit, base_commit, commit_subject, diff_stat_json, changed_files_json, requires_restart)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`)
+          .run(resultId, result.task_id, facts.commitHash, facts.baseCommit || ctx.cfg.selfDevBaseCommit || null,
+            facts.commitSubject || null,
+            facts.diffStat ? JSON.stringify(facts.diffStat) : null,
+            facts.changedFiles ? JSON.stringify(facts.changedFiles) : null).lastInsertRowid);
+        appendDomainEvent(db, {
+          eventType: 'APPLY_REQUEST_CREATED', entityType: 'apply_request', entityId: id, actor: USER_ACTOR,
+          payload: { resultId, sourceCommit: facts.commitHash },
+        });
+        return db.prepare('SELECT * FROM apply_requests WHERE id = ?').get(id);
+      });
+    },
+
+    applyRequestList(state) {
+      if (state) return db.prepare('SELECT * FROM apply_requests WHERE state = ? ORDER BY id DESC LIMIT 100').all(state);
+      return db.prepare('SELECT * FROM apply_requests ORDER BY id DESC LIMIT 100').all();
+    },
+
+    markApplyRequestStatus(id, state, note) {
+      if (!['APPLIED', 'FAILED', 'ROLLED_BACK'].includes(state)) {
+        throw new BadRequestError(`unknown apply state ${state}`);
+      }
+      return tx(db, () => {
+        const r = db.prepare('SELECT * FROM apply_requests WHERE id = ?').get(id);
+        if (!r) throw new NotFoundError('apply_request', id);
+        if (r.state !== 'PREPARED') throw new BadRequestError(`apply request is ${r.state}, not PREPARED`);
+        db.prepare("UPDATE apply_requests SET state = ?, applied_at = ?, note = ? WHERE id = ? AND state = 'PREPARED'")
+          .run(state, new Date().toISOString(), note || null, id);
+        appendDomainEvent(db, {
+          eventType: 'APPLY_REQUEST_STATUS', entityType: 'apply_request', entityId: id, actor: USER_ACTOR,
+          payload: { state, note: note || null },
+        });
+        return db.prepare('SELECT * FROM apply_requests WHERE id = ?').get(id);
+      });
     },
 
     taskDetail(id) {
@@ -412,6 +527,9 @@ function createServiceFacade(db, ctx) {
       const permissions = execIds.length
         ? db.prepare(`SELECT * FROM permission_requests WHERE execution_id IN (${placeholders(execIds.length)}) ORDER BY id DESC`).all(...execIds)
         : [];
+      const applyRequests = taskIds.length
+        ? db.prepare(`SELECT * FROM apply_requests WHERE task_id IN (${placeholders(taskIds.length)}) ORDER BY id DESC LIMIT 50`).all(...taskIds)
+        : [];
       const items = [];
       for (const m of messages) items.push({ type: 'message', at: m.created_at, data: m });
       for (const t of tasks) items.push({ type: 'task', at: t.created_at, data: t });
@@ -420,6 +538,7 @@ function createServiceFacade(db, ctx) {
       for (const a of approvals) items.push({ type: 'approval', at: a.created_at, data: { ...a, candidate: candById[a.candidate_id] || null } });
       for (const q of questions) items.push({ type: 'question', at: q.asked_at, data: q });
       for (const p of permissions) items.push({ type: 'permission', at: p.asked_at, data: p });
+      for (const ar of applyRequests) items.push({ type: 'apply', at: ar.created_at, data: ar });
       items.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
       return {
         conversation: conv,
@@ -432,6 +551,7 @@ function createServiceFacade(db, ctx) {
         candidates,
         questions,
         permissions,
+        applyRequests,
       };
     },
 

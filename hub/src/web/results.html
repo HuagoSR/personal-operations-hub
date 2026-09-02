@@ -4,55 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Results</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
   <div class="container">
-    <h4>Result Review</h4>
+    <h4 data-i18n="title.results">结果审查</h4>
     <div id="list"></div>
   </div>
+  <script src="/i18n.js"></script>
+  <script src="/md.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Results', 'results');
+    window.hub.page(t('title.results'), 'results');
     (async () => {
+      const box = document.getElementById('list');
+      box.innerHTML = window.hub.skeletonList();
       const rows = await window.hub.api('GET', '/api/results');
       const tasks = await window.hub.api('GET', '/api/tasks');
-      const tById = Object.fromEntries(tasks.map((t) => [t.id, t]));
+      const tById = Object.fromEntries(tasks.map((task) => [task.id, task]));
       document.getElementById('list').innerHTML = rows.map((r) => {
-        const t = tById[r.task_id] || {};
+        const task = tById[r.task_id] || {};
+        const reviewable = ['RESULT_AVAILABLE', 'REVIEW'].includes(task.state);
+        const done = task.state === 'COMPLETED';
+        const facts = r.facts_json ? JSON.parse(r.facts_json) : null;
         return `
         <div class="card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <div>
-                <span class="badge bg-dark">Result #${r.id}</span>
-                <span class="text-muted small">task #${r.task_id} / ${window.hub.esc(r.worker)} / ${window.hub.esc(r.created_at)}</span>
-              </div>
-              <div>
-                ${['RESULT_AVAILABLE', 'REVIEW'].includes(t.state) ? `
-                  <button class="btn btn-sm btn-success" onclick="complete(${r.id})">确认完成</button>
-                  <button class="btn btn-sm btn-outline-primary" onclick="another(${r.id})">再次执行</button>` : window.hub.badge(t.state || '?')}
-              </div>
-            </div>
-            <div class="mt-2"><strong>${window.hub.esc(t.title || r.summary)}</strong></div>
-            <div class="text-muted small">${window.hub.esc(r.summary)}</div>
-            ${r.tests_json ? `<div class="small mt-1">Tests: <pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.tests_json), null, 2))}</pre></div>` : ''}
-            ${r.artifacts_json ? `<div class="small mt-1">Artifacts: <pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.artifacts_json), null, 2))}</pre></div>` : ''}
-            ${r.evidence_json ? `<div class="small mt-1">Evidence: <pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.evidence_json), null, 2))}</pre></div>` : ''}
+          <div class="card-head">
+            ${window.hub.typeChip('result')}<span class="chip">#${r.id}</span>
+            <span class="card-title">${window.hub.esc(task.title || r.summary)}</span>
+            <span class="card-meta">${t('common.taskWord')} #${r.task_id} / ${window.hub.esc(r.worker)} / <span title="${window.hub.esc(r.created_at)}">${window.hub.fmtTime(r.created_at)}</span></span>
+            <span class="spacer"></span>
+            ${(reviewable || done) ? '' : window.hub.badge(task.state || '?')}
           </div>
+          <div class="card-body">
+            ${window.hub.factsHtml(facts)}
+            <div class="mt-1">${window.mdLite(r.summary)}</div>
+            ${r.tests_json ? `<details class="fold"><summary>${t('res.tests')}</summary><pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.tests_json), null, 2))}</pre></details>` : ''}
+            ${r.artifacts_json ? `<details class="fold"><summary>${t('res.artifacts')}</summary><pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.artifacts_json), null, 2))}</pre></details>` : ''}
+            ${r.evidence_json ? `<details class="fold"><summary>${t('res.evidence')}</summary><pre class="json">${window.hub.esc(JSON.stringify(JSON.parse(r.evidence_json), null, 2))}</pre></details>` : ''}
+          </div>
+          ${(reviewable || done) ? `<div class="card-foot">
+            ${done ? `<button class="btn btn-sm btn-success" disabled>${window.hub.icon('checkCircle', 13)}${t('common.done')}</button>`
+              : `<button class="btn btn-sm btn-success" onclick="complete(${r.id}, this)">${t('common.complete')}</button>`}
+            <button class="btn btn-sm btn-outline-primary" onclick="another(${r.id})">${t('common.rerun')}</button>
+          </div>` : ''}
         </div>`;
-      }).join('') || '<div class="text-muted">暂无结果</div>';
-      window.complete = async (id) => {
-        try { await window.hub.api('POST', `/api/results/${id}/review`, { action: 'complete' }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      }).join('') || window.hub.emptyHtml('results', t('res.empty'));
+      window.complete = async (id, btn) => {
+        try {
+          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/results/${id}/review`, { action: 'complete' }));
+          location.reload();
+        } catch (e) { window.hub.formError(e); }
       };
-      window.another = async (id) => {
-        const scenario = prompt('场景', 'SUCCESS');
-        if (scenario === null) return;
-        try { await window.hub.api('POST', `/api/results/${id}/review`, { action: 'another_execution', scenario }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      window.another = (id) => {
+        window.hub.modalPrompt({
+          title: t('modal.chooseScenario'),
+          fields: [{ type: 'select', name: 'scenario', options: window.hub.SCENARIOS, value: 'SUCCESS' }],
+          okText: t('common.confirm'),
+          onOk: async (v) => {
+            await window.hub.api('POST', `/api/results/${id}/review`, { action: 'another_execution', scenario: v.scenario });
+            location.reload();
+          },
+        });
       };
     })().catch(window.hub.formError);
   </script>

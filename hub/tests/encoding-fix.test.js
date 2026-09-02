@@ -113,17 +113,19 @@ test('6A-fix: migration 006 marks only dense-question-mark rows', () => {
 test('6A-fix: web assets are valid UTF-8 with intact Chinese markers', () => {
   const webDir = path.join(__dirname, '..', 'src', 'web');
   const markers = {
-    'index.html': 'Inbox 新事件',
-    'inbox.html': '查看上下文',
+    'index.html': '',
+    'inbox.html': '',
     'tasks.html': '任务候选',
-    'approvals.html': '审批记录',
+    'approvals.html': '',
     'executions.html': '执行记录',
-    'results.html': '确认完成',
+    'results.html': '',
     'projects.html': '系统项目',
     'project.html': '新建会话',
     'conversations.html': '新会话标题',
     'conversation.html': '生成任务候选',
-    'app.js': '个人助手',
+    'app.js': '',
+    'md.js': '',
+    'i18n.js': '个人助手',
     'style.css': '',
   };
   for (const [name, marker] of Object.entries(markers)) {

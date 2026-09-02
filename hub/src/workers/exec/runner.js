@@ -68,4 +68,22 @@ function runSandboxed(opts, command, spawnOpts = {}) {
   return child;
 }
 
-module.exports = { buildBwrapArgs, runSandboxed };
+function runSandboxedCapture(opts, command, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    const child = runSandboxed(opts, command, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    let err = '';
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; resolve(r); } };
+    const t = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (e) { }
+      finish({ ok: false, code: null, stdout: out, stderr: err, timeout: true });
+    }, timeoutMs);
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('exit', (code) => { clearTimeout(t); finish({ ok: code === 0, code, stdout: out, stderr: err }); });
+    child.on('error', (e) => { clearTimeout(t); finish({ ok: false, code: null, stdout: out, stderr: String(e) }); });
+  });
+}
+
+module.exports = { buildBwrapArgs, runSandboxed, runSandboxedCapture };

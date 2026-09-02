@@ -100,6 +100,22 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   outside_project: 'ask',
 });
 
+const SELF_PROJECT_TEMPLATE = Object.freeze({
+  read_project: 'allow',
+  write_project: 'allow',
+  run_project_commands: 'allow',
+  run_tests: 'allow',
+  install_dependencies: 'allow',
+  network: 'ask',
+  git_commit: 'allow',
+  git_push: 'ask',
+  sudo: 'deny',
+  system_config: 'deny',
+  outside_project: 'deny',
+});
+
+const CAPABILITY_RANK = { deny: 0, ask: 1, allow: 2 };
+
 module.exports = {
   TASK_STATES,
   EXECUTION_STATES,
@@ -121,4 +137,6 @@ module.exports = {
   CAPABILITY_VALUES,
   HIGH_RISK_CAPABILITIES,
   DEFAULT_CAPABILITIES,
+  SELF_PROJECT_TEMPLATE,
+  CAPABILITY_RANK,
 };

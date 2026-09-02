@@ -4,112 +4,151 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tasks</title>
+  <script>(function(){try{var t=localStorage.getItem('hub-theme')||'auto';if(t==='auto')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-bs-theme',t);var l=null;var m=location.search.match(/[?&]lang=(zh|en)\b/);if(m){l=m[1];try{localStorage.setItem('hub-lang',l);}catch(e2){}}else{try{l=localStorage.getItem('hub-lang');}catch(e2){}}document.documentElement.lang=(l==='en')?'en':'zh-CN';}catch(e){}})();</script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324292f'/%3E%3Ctext x='16' y='21.5' font-family='Arial,sans-serif' font-size='16' font-weight='700' fill='%23ffffff' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
   <link href="/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
   <div id="nav"></div>
   <div class="container">
-    <h4>Task Candidates</h4>
+    <h4 data-i18n="tasks.candidates">任务候选</h4>
     <div id="candidates"></div>
-    <h4 class="mt-4">Tasks</h4>
-    <div id="tasks"></div>
+    <div class="d-flex justify-content-between align-items-center mt-4">
+      <h4 class="mb-0" data-i18n="tasks.sectionTasks">任务</h4>
+      <div>
+        <div class="tabs" id="bucket-tabs">
+          <button class="tab active" data-bucket="running"></button>
+          <button class="tab" data-bucket="waitingForMe"></button>
+          <button class="tab" data-bucket="resultAvailable"></button>
+          <button class="tab" data-bucket="failed"></button>
+          <button class="tab" data-bucket="completed"></button>
+          <button class="tab" data-bucket="cancelled"></button>
+        </div>
+      </div>
+    </div>
+    <div id="buckets" class="mt-2"></div>
   </div>
+  <script src="/i18n.js"></script>
+  <script src="/md.js"></script>
   <script src="/app.js"></script>
   <script>
-    window.hub.page('Tasks', 'tasks');
+    window.hub.page(t('title.tasks'), 'tasks');
     (async () => {
-      const [cands, tasks] = await Promise.all([
+      const bucketTabs = { running: 'tasks.bucket.running', waitingForMe: 'tasks.bucket.waiting', resultAvailable: 'tasks.bucket.results', failed: 'tasks.bucket.failed', completed: 'tasks.bucket.completed', cancelled: 'tasks.bucket.cancelled' };
+      document.querySelectorAll('#bucket-tabs .tab').forEach((b) => { b.textContent = t(bucketTabs[b.dataset.bucket]); });
+
+      const candBox = document.getElementById('candidates');
+      const bucketBox = document.getElementById('buckets');
+      candBox.innerHTML = window.hub.skeletonList(2);
+      bucketBox.innerHTML = window.hub.skeletonList(2);
+      const [cands, buckets] = await Promise.all([
         window.hub.api('GET', '/api/candidates'),
-        window.hub.api('GET', '/api/tasks'),
+        window.hub.api('GET', '/api/tasks/buckets'),
       ]);
       document.getElementById('candidates').innerHTML = cands.map((c) => `
         <div class="card">
           <div class="card-body">
             <div class="d-flex justify-content-between">
               <div><strong>${window.hub.esc(c.title)}</strong>
-                <span class="badge bg-secondary">${window.hub.esc(c.origin_type)}</span>
+                <span class="tag">${window.hub.esc(c.origin_type)}</span>
                 ${window.hub.badge(c.state)} <span class="text-muted small">#${c.id}</span>
               </div>
               <div>
                 ${c.state === 'OPEN' ? `
-                  <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${window.hub.esc(c.title).replace(/'/g, "\\'")}')">批准</button>
-                  <button class="btn btn-sm btn-danger" onclick="reject(${c.id})">拒绝</button>` : ''}
+                  <button class="btn btn-sm btn-success" onclick="window.hub.openApproveModal(${c.id}, '${window.hub.esc(c.title).replace(/'/g, "\\'")}')">${t('common.approve')}</button>
+                  <button class="btn btn-sm btn-danger" onclick="reject(${c.id})">${t('common.reject')}</button>` : ''}
               </div>
             </div>
-            ${c.description ? `<div class="text-muted small mt-1">${window.hub.esc(c.description)}</div>` : ''}
+            ${c.description ? `<div class="text-muted small mt-1">${window.mdLite(c.description)}</div>` : ''}
           </div>
-        </div>`).join('') || '<div class="text-muted">暂无任务候选。可在 Inbox 或 Conversations 中创建。</div>';
+        </div>`).join('') || window.hub.emptyHtml('tasks', t('tasks.noCandidates'));
 
-      document.getElementById('tasks').innerHTML = tasks.map((t) => `
-        <div class="card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between">
-              <div><strong>#${t.id} ${window.hub.esc(t.title)}</strong> ${window.hub.badge(t.state)}</div>
-              <div>
-                ${!['COMPLETED', 'CANCELLED'].includes(t.state) ? `
-                  <button class="btn btn-sm btn-outline-danger" onclick="cancelTask(${t.id})">取消</button>` : ''}
-                ${['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(t.state) ? `
-                  <button class="btn btn-sm btn-outline-primary" onclick="another(${t.id})">再次执行</button>` : ''}
-              </div>
-            </div>
-            <div id="task-execs-${t.id}" class="mt-2 small"></div>
+      const bucketMeta = {
+        running: { label: 'tasks.bucket.running', empty: 'tasks.empty.running' },
+        waitingForMe: { label: 'tasks.bucket.waiting', empty: 'tasks.empty.waiting' },
+        resultAvailable: { label: 'tasks.bucket.results', empty: 'tasks.empty.results' },
+        failed: { label: 'tasks.bucket.failed', empty: 'tasks.empty.failed' },
+        completed: { label: 'tasks.bucket.completed', empty: 'tasks.empty.completed' },
+        cancelled: { label: 'tasks.bucket.cancelled', empty: 'tasks.empty.cancelled' },
+      };
+      const taskCard = (entry) => {
+        const task = entry.task;
+        const ex = entry.latestExecution;
+        const actions = [];
+        if (!['COMPLETED', 'CANCELLED'].includes(task.state)) {
+          actions.push(`<button class="btn btn-sm btn-outline-danger" onclick="cancelTask(${task.id}, this)">${t('common.cancelTask')}</button>`);
+        }
+        if (['EXECUTING', 'RESULT_AVAILABLE', 'REVIEW'].includes(task.state) || (ex && ex.state === 'FAILED')) {
+          actions.push(`<button class="btn btn-sm btn-outline-primary" onclick="another(${task.id})">${t('common.rerun')}</button>`);
+        }
+        const exLine = ex ? `<span class="card-meta">${t('common.latestExec')} #${ex.id} ${window.hub.esc(ex.worker)} ${window.hub.badge(ex.state)}${ex.error ? ' · ' + window.hub.esc(String(ex.error).slice(0, 120)) : ''}</span>` : '';
+        const convLink = task.conversation_id ? `<a class="small ms-2" href="/conversation.html?id=${task.conversation_id}">${t('common.conversation')} →</a>` : '';
+        return `<div class="card">
+          <div class="card-head">
+            ${window.hub.typeChip('task')}<span class="chip">#${task.id}</span>
+            <strong class="card-title">${window.hub.esc(task.title)}</strong> ${window.hub.badge(task.state)}
+            ${convLink}
+            <span class="spacer"></span>
           </div>
-        </div>`).join('') || '<div class="text-muted">暂无任务</div>';
-
-      for (const t of tasks) {
-        const d = await window.hub.api('GET', '/api/tasks/' + t.id);
-        const box = document.getElementById('task-execs-' + t.id);
-        box.innerHTML = '<div class="mb-1 fw-bold">Executions</div>' + d.executions.map((ex) => `
-          <div class="border rounded p-2 mb-1">
-            <span class="badge bg-dark">#${ex.id}</span> ${window.hub.esc(ex.scenario)} ${window.hub.badge(ex.state)}
-            <span class="text-muted">attempt=${ex.attempt}</span>
-            ${ex.error ? `<div class="text-danger">${window.hub.esc(ex.error)}</div>` : ''}
-            ${ex.questions.filter((q) => q.state === 'OPEN').map((q) => `
-              <div class="mt-1">
-                <span class="badge bg-warning">Worker 提问</span> ${window.hub.esc(q.question)}
-                <form class="d-flex gap-1 mt-1" onsubmit="return answer(event, ${ex.id}, ${q.id})">
-                  <input class="form-control form-control-sm" name="a" placeholder="回答">
-                  <button class="btn btn-sm btn-primary">回答</button>
-                </form>
-              </div>`).join('')}
-            ${ex.permissions.filter((p) => p.state === 'OPEN').map((p) => `
-              <div class="mt-1">
-                <span class="badge bg-warning">权限请求</span> ${window.hub.esc(p.capability)}
-                <button class="btn btn-sm btn-success ms-1" onclick="perm(${ex.id}, ${p.id}, 'allow')">允许</button>
-                <button class="btn btn-sm btn-danger" onclick="perm(${ex.id}, ${p.id}, 'deny')">拒绝</button>
-              </div>`).join('')}
-            ${ex.result ? `<div class="mt-1"><a href="/results.html?id=${ex.result.id}">结果 #${ex.result.id} →</a></div>` : ''}
-          </div>`).join('') + '<div class="mb-1 fw-bold">Grants</div>' +
-          d.grants.map((g) => `<span class="badge bg-secondary me-1">Grant #${g.id} ${window.hub.esc(g.worker)} ${g.state}</span>`).join('');
+          <div class="card-body">${exLine}</div>
+          ${actions.length ? `<div class="card-foot">${actions.join(' ')}</div>` : ''}
+        </div>`;
+      };
+      let html = '';
+      for (const [key, meta] of Object.entries(bucketMeta)) {
+        const list = buckets[key] || [];
+        html += `<div class="bucket-section" data-section="${key}" style="display:none">
+          <div class="text-muted small mb-2">${t(meta.label)}（${list.length}）</div>
+          ${list.map(taskCard).join('') || window.hub.emptyCenter(t(meta.empty))}
+        </div>`;
       }
+      document.getElementById('buckets').innerHTML = html;
+      const showBucket = (key) => {
+        document.querySelectorAll('#buckets .bucket-section').forEach((el) => {
+          el.style.display = el.dataset.section === key ? 'block' : 'none';
+        });
+        document.querySelectorAll('#bucket-tabs .tab').forEach((b) => {
+          b.classList.toggle('active', b.dataset.bucket === key);
+        });
+      };
+      document.querySelectorAll('#bucket-tabs .tab').forEach((b) => {
+        b.onclick = () => {
+          showBucket(b.dataset.bucket);
+          window.hub.saveUiValue('tasksBucket', b.dataset.bucket);
+        };
+      });
+      const savedBucket = window.hub.readUiValue('tasksBucket');
+      showBucket(bucketMeta[savedBucket] ? savedBucket : 'running');
 
-      window.reject = async (id) => {
-        const reason = prompt('拒绝原因（可留空）');
-        if (reason === null) return;
-        try { await window.hub.api('POST', `/api/candidates/${id}/reject`, { reason: reason || null }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      window.reject = (id) => {
+        window.hub.modalPrompt({
+          title: `${t('modal.rejectTitle')} #${id}`,
+          fields: [{ type: 'textarea', name: 'reason', placeholder: t('tasks.rejectPh') }],
+          okText: t('common.reject'),
+          okClass: 'btn-danger',
+          onOk: async (v) => {
+            await window.hub.api('POST', `/api/candidates/${id}/reject`, { reason: v.reason || null });
+            location.reload();
+          },
+        });
       };
-      window.cancelTask = async (id) => {
-        try { await window.hub.api('POST', `/api/tasks/${id}/cancel`, {}); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      window.cancelTask = async (id, btn) => {
+        try {
+          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/tasks/${id}/cancel`, {}));
+          location.reload();
+        } catch (e) { window.hub.formError(e); }
       };
-      window.another = async (id) => {
-        const scenario = prompt('场景（SUCCESS/FAIL/WAIT_FOR_USER/WAIT_FOR_APPROVAL/TIMEOUT/CRASH_ONCE_THEN_SUCCESS）', 'SUCCESS');
-        if (scenario === null) return;
-        try { await window.hub.api('POST', `/api/tasks/${id}/executions`, { scenario }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
-      };
-      window.answer = async (ev, exId, qId) => {
-        ev.preventDefault();
-        const a = ev.target.elements.a.value;
-        try { await window.hub.api('POST', `/api/executions/${exId}/questions/${qId}/answer`, { answer: a }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
-        return false;
-      };
-      window.perm = async (exId, pId, decision) => {
-        try { await window.hub.api('POST', `/api/executions/${exId}/permissions/${pId}/decide`, { decision }); location.reload(); }
-        catch (e) { window.hub.formError(e); }
+      window.another = (id) => {
+        window.hub.modalPrompt({
+          title: t('modal.chooseScenario'),
+          fields: [{ type: 'select', name: 'scenario', options: window.hub.SCENARIOS, value: 'SUCCESS' }],
+          okText: t('common.confirm'),
+          onOk: async (v) => {
+            await window.hub.api('POST', `/api/tasks/${id}/executions`, { scenario: v.scenario });
+            location.reload();
+          },
+        });
       };
     })().catch(window.hub.formError);
   </script>

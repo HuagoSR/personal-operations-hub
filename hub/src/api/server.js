@@ -21,9 +21,17 @@ function statusForError(e) {
 }
 
 function json(res, status, body) {
+  if (res.headersSent) {
+    try { res.end(); } catch (e) { }
+    return;
+  }
   const data = JSON.stringify(body === undefined ? { ok: true } : body);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(data) });
-  res.end(data);
+  try {
+    res.end(data);
+  } catch (e) {
+    try { res.destroy(); } catch (e2) { }
+  }
 }
 
 function readBody(req) {
@@ -91,6 +99,7 @@ function createApiHandler(db, ctx) {
       }
 
       if (root === 'tasks') {
+        if (method === 'GET' && id === 'buckets') return json(res, 200, S.taskBuckets()), true;
         if (method === 'GET' && !id) return json(res, 200, S.taskList(url.searchParams.get('state'))), true;
         if (method === 'GET' && id) return json(res, 200, S.taskDetail(Number(id))), true;
         if (method === 'POST' && id && action === 'cancel') {
@@ -100,6 +109,18 @@ function createApiHandler(db, ctx) {
         if (method === 'POST' && id && action === 'executions') {
           const body = await readBody(req);
           return json(res, 201, S.requestAnotherExecution(Number(id), body)), true;
+        }
+      }
+
+      if (root === 'attention' && method === 'GET') {
+        return json(res, 200, S.attentionList()), true;
+      }
+
+      if (root === 'apply-requests') {
+        if (method === 'GET') return json(res, 200, S.applyRequestList(url.searchParams.get('state'))), true;
+        if (method === 'POST' && id && action === 'status') {
+          const body = await readBody(req);
+          return json(res, 200, S.markApplyRequestStatus(Number(id), body.state, body.note)), true;
         }
       }
 
@@ -134,6 +155,10 @@ function createApiHandler(db, ctx) {
         if (method === 'POST' && id && action === 'review') {
           const body = await readBody(req);
           return json(res, 200, S.reviewResult(Number(id), body)), true;
+        }
+        if (method === 'POST' && id && action === 'prepare-apply') {
+          const body = await readBody(req);
+          return json(res, 201, S.prepareApplyRequest(Number(id)), true);
         }
       }
 
@@ -189,18 +214,24 @@ function createApiHandler(db, ctx) {
 }
 
 function serveStatic(res, filePath) {
+  if (res.headersSent) {
+    try { res.end(); } catch (e) { }
+    return;
+  }
   let content;
   try {
     content = fs.readFileSync(filePath);
   } catch (e) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('not found');
+    try { res.end('not found'); } catch (e2) { }
     return;
   }
   const ext = path.extname(filePath).toLowerCase();
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
-  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
-  res.end(content);
+  const headers = { 'Content-Type': types[ext] || 'application/octet-stream' };
+  if (types[ext]) headers['Cache-Control'] = 'no-cache';
+  res.writeHead(200, headers);
+  try { res.end(content); } catch (e) { try { res.destroy(); } catch (e2) { } }
 }
 
 function createServer(db, ctx, cfg) {
@@ -214,6 +245,7 @@ function createServer(db, ctx, cfg) {
       json(res, 400, { error: { code: 'BAD_REQUEST', message: 'bad url' } });
       return;
     }
+    ctx.logger.debug(`http ${req.method} ${url.pathname}`);
     try {
       const handled = await api(req, res, url);
       if (handled) return;

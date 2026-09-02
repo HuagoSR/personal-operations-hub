@@ -28,6 +28,8 @@ const DEFAULTS = {
   workerCodexModel: 'gpt-5.6-luna',
   workerProfileRoot: '',
   workerDeepseekApiKeyFile: '/home/huagosr/.opencode/.env',
+  selfDevWorkspace: '/home/huagosr/worker-sandbox-untrusted/hub-dev',
+  selfDevBaseTag: 'phase6d-known-good',
 };
 
 function load(file) {
