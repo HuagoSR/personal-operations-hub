@@ -10,8 +10,8 @@
 - **Hub V0.1**（✅）：自研状态机 + SQLite（node:sqlite）+ 事务 Outbox + 幂等 Dispatcher + spool 只读摄入 + Control Web（127.0.0.1:8300，systemd --user `personal-hub`）。tag `v0.1-known-good`。
 - **真实 Worker**（✅）：CodexWorker 端到端闭环（bwrap Enforcement 8/8、权限 ALLOW/ASK 链、真实修复任务）；OpenCodeWorker 适配器就绪，被上游 models.dev 目录回归阻断（解锁路径见 `research/PHASE4_REPORT_FINAL.md`）。
 - **受控试点（Gomoku）**（✅）：10 PASS + 2 PASS_WITH_NOTES，结论 READY_FOR_REAL_PROJECT_READ_ONLY。
-- **Control Web 重构**（✅ 6A–6C）：数据基础（Hub Self 系统项目 + GLOBAL_HUB 唯一 + conversation 关联 + Result 结构化事实）、侧边栏导航（Bootstrap vendor 化、Home=Global Hub）、Conversation-first 时间线（消息/任务/执行/结果/审批卡片 + composer + 命令会话绑定 + 页面内局部刷新）。
-- **进行中**：Hub Self 开发闭环（6E：隔离工作副本 + 手动 apply + rollback SOP，仅设计未实施）；UX 打磨（6F）。UI 完善由独立会话负责。
+- **Control Web 重构与 UX 打磨**（✅ 6A–6F）：数据基础（Hub Self 系统项目 + GLOBAL_HUB 唯一 + conversation 关联 + Result 结构化事实）、侧边栏导航（Bootstrap vendor 化、Home=Global Hub）、Conversation-first 时间线（消息/任务/执行/结果/审批卡片 + composer + 命令会话绑定 + 智能刷新）、全局运维视图（Tasks 分桶 tabs、Approvals 三区聚合面板、Dashboard 活动流）；UX 打磨（6F）：亮/暗主题（跟随系统）、中英双语切换、md-lite Markdown 渲染、toast 统一提示与模态输入、操作按钮加载态防重、侧边栏未读角标、空态/骨架屏、时间线智能刷新（无变化跳过/新增追加/变化保持现场）、相对时间戳、favicon。移动端响应式已决定暂缓。
+- **Hub Self 开发闭环**（✅ 6E 完成）：`phase6d-known-good` 基线 + `~/worker-sandbox-untrusted/hub-dev/` 隔离副本；SELF_PROJECT_TEMPLATE（覆盖只可收紧、workspace 强制）；git 证据入 Result facts；apply_requests 生命周期（Prepare → 手动 apply → APPLIED）；带外脚本 `scripts/{prepare-update,apply-hub,rollback-hub}.sh` + `hub-backups/manifest.json`。注意：self-commit 后必须先合并回本地主仓再同步 hub-dev；生产目录无 git，靠 tar 备份回滚。
 - 无 LLM 智能管线、无通知系统。
 
 ## Architecture Principles
@@ -73,7 +73,7 @@
 
 ## Current Priorities
 
-1. UI 完善（独立会话负责；基线：6A–6C 已上线，49 测试全绿）。
+1. UI 完善已闭环（6A–6F，108 测试全绿）；移动端响应式暂缓，后续按需启用。
 2. Hub Self 开发闭环（6E，按 `research/PHASE6_HUB_SELF_PROJECT_DESIGN.md`）与 UX 打磨（6F）。
 3. 保持已运行系统稳定（Gateway / personal-hub / 微信容器，勿干扰）。
 

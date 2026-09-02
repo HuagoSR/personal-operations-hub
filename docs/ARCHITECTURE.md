@@ -16,7 +16,7 @@
 - Gateway 细节与踩坑见 `research/GATEWAY_HISTORY.md`；Hub 实施见 `research/HUB_V01_REPORT.md`。
 - 关键事实：`wechat_timestamp` 是发送端时钟不可靠；微信掉线→重登后补采；spool sequence 按 gateway 单调。
 
-## 二、PLANNED：Real Worker（Phase 4 已完成）+ Control Web & Hub Self Project（Phase 6 进行中）
+## 二、CURRENT：Real Worker（已完成）+ Control Web & Hub Self Project（6A–6F 已完成）
 
 ```
 Hub Core（不变）
