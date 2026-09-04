@@ -3,3 +3,4 @@ data/
 logs/
 config/config.json
 *.tar.gz
+eval/intelligence/runs/

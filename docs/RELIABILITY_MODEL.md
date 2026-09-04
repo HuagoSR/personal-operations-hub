@@ -44,3 +44,12 @@ Source 幂等 / 双审批 / crash-after-approval / 重复派发 / Worker 失败 
 - 每次 apply 前自动备份（tar），`scripts/rollback-hub.sh` 提供带外回滚；health check 失败自动回滚并审计。
 - 带外恢复 SOP 不依赖 Hub（SSH + known-good tag + systemd），自动部署评估前必须演练通过。
 - GLOBAL_HUB 合并等数据迁移必须先备份 + 迁移测试；timeline 等只读投影不得改业务真相。
+
+## 8. Intelligence 可靠性（Phase 7，7A–7D 已实施）
+
+- Intelligence = **optional asynchronous enrichment**，永不是 Gateway ingestion 的同步依赖（D 系列）✅
+- 独立异步 runner + 幂等 job（episode 唯一 + input_hash 去重 + attempts 上限）：LLM down/timeout/限流/schema invalid → analysis FAILED/RETRYABLE，消息照常进 Inbox，Task Core 不受影响 ✅（生产实测：live shadow 运行中）
+- intelligence_analyses append-only（触发器禁 UPDATE/DELETE）：模型判断是证据不是真相（D015），历史版本永不覆盖 ✅
+- 可观测：`GET /api/intelligence/status` + `scripts/intelligence-observe.js`（量/成功率/延迟/cost/schema failure/retry/confidence 分布/建议接受率）；日志不记正文 ✅
+- 评测先于自动化：13 类语料 + 指标 harness（`hub/eval/intelligence/`）；Feedback 积累为真实评测集 ✅
+- 预算上限：$0.5/日 + $5/月（D025），达限自动暂停新云分析不影响 Inbox ✅；v1 只分析 Inbox 消息控制调用量 ✅

@@ -118,3 +118,14 @@ projects:
   - 微信容器/微信数据/credentials/~/.ssh/sudo/system_config：**DENY 永远**
 - 自我修改流程：副本修改 → 测试 → Result/Diff → 用户 Review → [Prepare Update] → 手动 [Apply Update]（备份→同步→重启→health check）→ 失败 rollback。
 - **带外恢复 SOP**（不依赖 Hub）：SSH + known-good tag + `scripts/rollback-hub.sh` + systemd 重启；自动部署评估前必须演练通过（`research/PHASE6_HUB_SELF_PROJECT_DESIGN.md` §12）。
+
+## 12. Hub Intelligence 安全模型（Phase 7 规划，D015–D022）
+
+- 外部消息（微信及未来 Email/GitHub/Calendar）= **UNTRUSTED DATA**：消息内容永不是对模型的指令（prompt injection 防御：容器化 + 无工具 + 严格 JSON 校验链 + FAILED 不猜）
+- Intelligence LLM 零权限：无 shell/文件/Worker/Codex/写 ExecutionGrant/无 Approval 决策/无凭据/无微信操作；产物只能是写入 append-only intelligence_analyses 的分析/分类/建议/置信度（D015）
+- 任何状态变化必须经确定性 service + 原审批体系；自动化等级上限 L3（D016），Shadow Mode 先行（D017）
+- Provider 抽象与数据出站授权分离（D018）：未获用户批准前**真实微信正文禁止发送给任何外部模型**（仅 synthetic/anonymized）；日志不记正文
+- 微信只读 System Invariant（D019）：五层强制（API surface / workspace / 白名单 / check-readonly.sh / apply 门），任何 Grant/用户覆盖不能变 ALLOW
+- Docker socket 永不暴露 Worker（D020）：容器操作只经 Gateway Ops Facade 白名单 + 用户 ASK
+- Gateway 手册（docs/manuals/）带版本元数据，是受管理 Context Source（D021）
+- 详细威胁分析见 research/PHASE7_THREAT_MODEL.md

@@ -64,6 +64,20 @@
 
       'inbox.empty': '暂无 Inbox 条目（@提及或私聊消息会出现在这里）',
       'inbox.mentioned': '@提及', 'inbox.titlePrompt': '任务标题（可留空使用默认）',
+      'common.save': '保存',
+
+      'intl.analysis': 'Hub 智能分析', 'intl.noAnalysis': '暂无智能分析',
+      'intl.importance': '重要性', 'intl.urgency': '紧迫性',
+      'intl.actionYes': '需行动', 'intl.actionNo': '仅信息',
+      'intl.confidence': '置信度', 'intl.summary': '摘要',
+      'intl.project': '建议项目', 'intl.task': '建议任务',
+      'intl.accepted': '分析正确', 'intl.rejected': '不是任务',
+      'intl.modify': '修改分类', 'intl.adjust': '修改重要性/紧迫性/项目',
+      'intl.feedbackDone': '已反馈', 'intl.risk': '风险标记',
+      'intl.failed': '分析失败', 'intl.failedNote': '失败原因',
+      'intl.viewRaw': '查看原始 JSON', 'intl.correctedTo': '修正为',
+      'intl.low': '低', 'intl.medium': '中', 'intl.high': '高',
+      'intl.level': '等级', 'intl.keep': '保持不变',
 
       'tasks.candidates': '任务候选', 'tasks.sectionTasks': '任务',
       'tasks.bucket.running': '进行中', 'tasks.bucket.waiting': '等我处理',
@@ -173,6 +187,20 @@
 
       'inbox.empty': 'Inbox is empty — mentions and DMs will appear here',
       'inbox.mentioned': 'Mentioned', 'inbox.titlePrompt': 'Task title (optional, default if empty)',
+      'common.save': 'Save',
+
+      'intl.analysis': 'Hub intelligence', 'intl.noAnalysis': 'No analysis yet',
+      'intl.importance': 'Importance', 'intl.urgency': 'Urgency',
+      'intl.actionYes': 'Needs action', 'intl.actionNo': 'Informational',
+      'intl.confidence': 'Confidence', 'intl.summary': 'Summary',
+      'intl.project': 'Suggested project', 'intl.task': 'Suggested task',
+      'intl.accepted': 'Correct', 'intl.rejected': 'Not a task',
+      'intl.modify': 'Adjust rating', 'intl.adjust': 'Adjust importance/urgency/project',
+      'intl.feedbackDone': 'Feedback recorded', 'intl.risk': 'Risk flags',
+      'intl.failed': 'Analysis failed', 'intl.failedNote': 'Reason',
+      'intl.viewRaw': 'View raw JSON', 'intl.correctedTo': 'Corrected to',
+      'intl.low': 'Low', 'intl.medium': 'Medium', 'intl.high': 'High',
+      'intl.level': 'Level', 'intl.keep': 'Keep as-is',
 
       'tasks.candidates': 'Task candidates', 'tasks.sectionTasks': 'Tasks',
       'tasks.bucket.running': 'In progress', 'tasks.bucket.waiting': 'Waiting for me',

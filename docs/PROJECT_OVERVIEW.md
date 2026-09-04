@@ -19,18 +19,20 @@
 - 独立的 Trusted Control Channel（第一版 Web 已上线；PWA + Push 仍为远期）：对话、查看 Inbox、审批任务、回答 Worker 问题、查看结果；
 - 可扩展的信息源体系（微信 → Email/GitHub/Calendar/RSS…）。
 
-## 当前做到哪里（截至 2026-09-02）
+## 当前做到哪里（截至 2026-09-04）
 
 | 组件 | 状态 |
 |---|---|
-| 微信 Gateway（只读采集） | ✅ 运行中（systemd --user）；7 天 soak 完成 |
+| 微信 Gateway（只读采集） | ✅ 运行中（systemd --user）；7 天 soak 完成；登录恢复流程手册化（`docs/manuals/WECHAT_LOGIN_GUIDE.md`） |
 | Hub V0.1 | ✅ 完成：SQLite 状态机 + Outbox + FakeWorker + spool 摄入 + Control Web（tag `v0.1-known-good`） |
 | Real Worker Foundation | ✅ 完成（Codex 线全绿：bwrap Enforcement 8/8、权限链、真实修复任务；OpenCode 上游回归待解锁） |
 | Controlled Pilot（Gomoku） | ✅ 完成：10 PASS + 2 PASS_WITH_NOTES，结论 READY_FOR_REAL_PROJECT_READ_ONLY |
-| Control Web 重构与 UX 打磨（6A–6F） | ✅ 上线：6A–6D 数据基础、侧边栏导航、Conversation-first 时间线、全局运维视图（Tasks 分桶、Approvals 三区聚合面板、Dashboard 活动流）；6F 打磨：亮暗主题（跟随系统）、中英双语切换、md-lite Markdown 渲染、toast/模态、按钮加载态、侧边栏未读角标、空态/骨架屏、时间线智能刷新、相对时间戳。108 测试全绿 |
-| Hub Self 开发闭环（6E） | ✅ 完成：Safe Self-Modification Pilot 全闭环（hub-dev 隔离副本 → Codex 修改/测试/commit → Result facts（commit hash）→ Prepare Update → 手动 apply → 回滚演练 → 再 apply） |
+| Control Web 重构与 UX 打磨（6A–6F） | ✅ 上线：数据基础、侧边栏导航、Conversation-first 时间线、全局运维视图；亮暗主题、中英双语、Markdown、toast/模态、未读角标、骨架屏、智能刷新、相对时间戳 |
+| Hub Self 开发闭环（6E） | ✅ 完成：Safe Self-Modification Pilot 全闭环（隔离副本 → Codex → Result facts → Prepare → 手动 apply → 回滚演练 → 再 apply） |
+| Hub Intelligence（7A–7D） | ✅ 完成：Analysis 平面底座（episode/校验链/append-only 证据）、真实模型基线（deepseek-chat schema 100%）、Inbox 智能 UI + 反馈闭环、**Live Shadow 观察期进行中**（只建议不执行，预算 $0.5/日 + $5/月，131 测试全绿） |
+| Gateway Self-Maintenance（8A） | ⏳ 设计完成（四层 Envelope + Ops Facade 白名单），待单独授权实施 |
 | 移动端响应式 | ⏸ 暂缓（用户决定，后续按需启用） |
-| 通知 / 智能管线 / 多源 | ❌ 未开发（后续评估） |
+| 通知 / Push / 多源 | ❌ 未开发（后续评估） |
 
 历史与调研：`research/`（GATEWAY_HISTORY / ARCHITECTURE_RESEARCH / HUB_V01_REPORT / worker-control-interfaces / human-approval-patterns / PHASE4_* / PHASE5_* / PHASE6_*）。
 
@@ -39,4 +41,4 @@
 - 不是微信机器人（微信**永久只读**，永不发送）；
 - 不是万能编程 Agent（Hub 不替代 Codex/OpenCode，只调度它们）；
 - 不是即时执行系统（外部消息不能直接触发服务器操作）；
-- 当前阶段不做：LLM 智能管线、移动原生 App、通知系统/Push、PWA、多信息源（后续评估）；移动端响应式暂缓；Worker 只准操作沙箱隔离工作区（含 Hub Self 开发副本）。
+- 当前阶段不做：移动原生 App、通知系统/Push、PWA、多信息源（后续评估）；移动端响应式暂缓；Intelligence 自动化上限 L3（只建议，不自动执行），L4 需单独批准；Worker 只准操作沙箱隔离工作区（含 Hub Self 开发副本）。

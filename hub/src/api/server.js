@@ -72,12 +72,29 @@ function createApiHandler(db, ctx) {
       if (method === 'GET' && root === 'dashboard') return json(res, 200, S.dashboard()), true;
 
       if (root === 'inbox') {
+        if (method === 'GET' && id === 'intelligence') return json(res, 200, S.inboxIntelligence()), true;
+        if (method === 'POST' && id === 'read') {
+          const body = await readBody(req);
+          return json(res, 200, S.markInboxRead(body.ids)), true;
+        }
         if (method === 'GET' && !id) return json(res, 200, S.inboxList(url.searchParams.get('state'))), true;
         if (method === 'GET' && id) return json(res, 200, S.inboxDetail(Number(id))), true;
         if (method === 'POST' && id && ['read', 'ignore', 'archive', 'convert'].includes(action)) {
           const body = await readBody(req);
           return json(res, 200, S.inboxAction(Number(id), action, body)), true;
         }
+      }
+
+      if (root === 'analyses') {
+        if (method === 'GET' && id) return json(res, 200, S.analysisDetail(Number(id))), true;
+        if (method === 'POST' && id && action === 'feedback') {
+          const body = await readBody(req);
+          return json(res, 201, S.postAnalysisFeedback(Object.assign({ analysisId: Number(id) }, body))), true;
+        }
+      }
+
+      if (root === 'intelligence' && id === 'status' && method === 'GET') {
+        return json(res, 200, S.intelligenceStatus()), true;
       }
 
       if (root === 'user-commands' && method === 'POST') {

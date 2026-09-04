@@ -7,6 +7,7 @@ const { ingestOnce } = require('./services/ingest');
 const { consumeOutboxOnce, pumpOnce } = require('./services/dispatcher');
 const { sweepOnce } = require('./services/sweep');
 const { createServer } = require('./api/server');
+const intelligence = require('./intelligence/service');
 
 const ROOT = path.join(__dirname, '..');
 const cfg = load(process.env.HUB_CONFIG || path.join(ROOT, 'config', 'config.json'));
@@ -58,7 +59,17 @@ async function loop(fn, ms, name) {
 
 loop(() => {
   if (cfg.ingestEnabled) {
-    const r = ingestOnce(db, { spoolDir: cfg.spoolDir, inboxRule: cfg.inboxRule, logger });
+    let intelHook = null;
+    if (cfg.intelligenceEnabled) {
+      intelHook = (db, m) => {
+        try {
+          intelligence.onInboxMessageIngested(db, cfg, m);
+        } catch (e) {
+          logger.warn(`intelligence hook failed: ${e.message}`);
+        }
+      };
+    }
+    const r = ingestOnce(db, { spoolDir: cfg.spoolDir, inboxRule: cfg.inboxRule, logger, intelHook });
     if (r.ingested > 0 || r.errors > 0) {
       logger.info(`ingest files=${r.files} new=${r.ingested} dup=${r.duplicates} err=${r.errors}`);
     }
@@ -70,6 +81,25 @@ loop(() => {
 }, cfg.dispatcherIntervalMs, 'dispatcher');
 
 loop(() => pumpOnce(db, ctx), cfg.pumpIntervalMs, 'pump');
+
+loop(() => {
+  if (cfg.intelligenceEnabled) {
+    const r = intelligence.sweepEpisodesOnce(db, cfg);
+    if (r.enqueued > 0) logger.info(`intelligence sweep closed=${r.closed} enqueued=${r.enqueued}`);
+  }
+}, cfg.intelligenceSweepIntervalMs, 'intel-sweep');
+
+loop(() => {
+  if (!cfg.intelligenceEnabled) return;
+  intelligence.processIntelligenceOnce(db, ctx).then((r) => {
+    if (r.disabled) return;
+    if (r.budgetBlocked) {
+      logger.warn(`intelligence budget blocked month=$${r.budget.month.toFixed(3)} day=$${r.budget.today.toFixed(3)}`);
+      return;
+    }
+    if (r.processed > 0) logger.info(`intelligence processed=${r.processed}`);
+  }).catch((e) => logger.error(`intelligence process error: ${e.message}`));
+}, cfg.intelligenceProcessIntervalMs, 'intel-process');
 
 loop(() => {
   const r = sweepOnce(db, ctx);

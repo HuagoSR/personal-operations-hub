@@ -9,7 +9,7 @@ const { insertEvent, linkRawMessage } = require('../domain/event');
 const { insertInboxItem } = require('../domain/inbox-item');
 const { getIngestState, upsertIngestState } = require('../domain/ingest-state');
 
-function ingestRecord(db, rec, { inboxRule }) {
+function ingestRecord(db, rec, { inboxRule, intelHook }) {
   const key = `${rec.gateway_id}:${rec.chat_id}:${rec.local_id}`;
   if (findRawMessageByKey(db, key)) return { key, duplicate: true };
   const rawId = insertRawMessage(db, {
@@ -66,12 +66,15 @@ function ingestRecord(db, rec, { inboxRule }) {
         eventType: 'INBOX_ITEM_CREATED', entityType: 'inbox', entityId: inboxId, actor: hubActor,
         payload: { eventId },
       });
+      if (intelHook) {
+        intelHook(db, { rawMessageId: rawId, chatId: rec.chat_id, chatType: rec.chat_type, collectedAt: rec.collected_at || null });
+      }
     }
   }
   return { key, duplicate: false, rawId, eventId, inboxId };
 }
 
-function ingestOnce(db, { spoolDir, inboxRule, logger }) {
+function ingestOnce(db, { spoolDir, inboxRule, logger, intelHook }) {
   if (!fs.existsSync(spoolDir)) return { files: 0, ingested: 0, duplicates: 0, errors: 0 };
   const files = fs.readdirSync(spoolDir).filter((f) => f.endsWith('.jsonl')).sort();
   let ingested = 0;
@@ -118,7 +121,7 @@ function ingestOnce(db, { spoolDir, inboxRule, logger }) {
       }
       try {
         tx(db, () => {
-          const r = ingestRecord(db, rec, { inboxRule });
+          const r = ingestRecord(db, rec, { inboxRule, intelHook });
           if (r.duplicate) duplicates++;
           else ingested++;
         });

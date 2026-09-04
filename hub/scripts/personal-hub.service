@@ -9,6 +9,7 @@ ExecStart=/usr/bin/node src/main.js
 Restart=on-failure
 RestartSec=10
 Environment=NODE_ENV=production
+EnvironmentFile=-%h/.hub-intelligence.env
 
 [Install]
 WantedBy=default.target

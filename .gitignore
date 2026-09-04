@@ -11,6 +11,10 @@ token
 *.png
 node_modules/
 collector-state.json
+login.log
+out/
 
-# dev artifacts
-research/soak/
+# dev docs & reports: keep local / VPS only, never track
+research/
+AGENTS.md
+docs/AGENTS.md

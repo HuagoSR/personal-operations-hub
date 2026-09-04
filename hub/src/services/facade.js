@@ -30,8 +30,32 @@ const { requestAnotherExecution, cancelTask, answerQuestion, decidePermissionReq
 const { revokeGrant } = require('./grant-admin');
 const { completeReview } = require('./review-service');
 const { ensureSystemEntities } = require('./bootstrap');
+const { latestAnalysisForEpisode, findAnalysis } = require('../domain/intelligence-analysis');
+const { listFeedback, insertFeedback } = require('../domain/analysis-feedback');
+const { LEVELS } = require('../intelligence/schema');
+const { budgetState } = require('../intelligence/service');
 
 const USER_ACTOR = { actorType: 'USER', actorId: 'owner' };
+
+function publicAnalysis(db, a) {
+  let out = null;
+  try { out = a.output_json ? JSON.parse(a.output_json) : null; } catch (e) { }
+  return {
+    analysis_id: a.id,
+    status: a.status,
+    provider: a.provider,
+    model: a.model,
+    schema_version: a.schema_version,
+    prompt_version: a.prompt_version,
+    confidence: a.confidence,
+    latency_ms: a.latency_ms,
+    estimated_cost: a.estimated_cost,
+    created_at: a.created_at,
+    error: a.error,
+    output: out,
+    feedback: listFeedback(db, a.id),
+  };
+}
 
 function count(db, sql, ...args) {
   return db.prepare(sql).get(...args).c;
@@ -99,6 +123,137 @@ function createServiceFacade(db, ctx) {
       return listInboxItems(db, { state: state || undefined });
     },
 
+    inboxIntelligence() {
+      const rows = db.prepare(`SELECT i.id AS inbox_id, i.state, i.created_at, e.id AS event_id, e.priority_hint,
+          e.source, erm.raw_message_id, rm.chat_id, rm.chat_type, rm.chat_name, rm.sender_name,
+          rm.text, rm.is_mentioned, rm.collected_at
+        FROM inbox_items i
+        JOIN events e ON e.id = i.event_id
+        JOIN event_raw_messages erm ON erm.event_id = e.id
+        JOIN raw_messages rm ON rm.id = erm.raw_message_id
+        WHERE i.state IN ('NEW', 'READ')
+        ORDER BY i.id DESC LIMIT 200`).all();
+      const byItem = new Map();
+      for (const r of rows) {
+        if (!byItem.has(r.inbox_id)) {
+          byItem.set(r.inbox_id, {
+            id: r.inbox_id, state: r.state, created_at: r.created_at, event_id: r.event_id,
+            priority_hint: r.priority_hint, source: r.source, rawIds: [], messages: [],
+          });
+        }
+        const item = byItem.get(r.inbox_id);
+        item.rawIds.push(r.raw_message_id);
+        item.messages.push({
+          chat_id: r.chat_id, chat_type: r.chat_type, chat_name: r.chat_name,
+          sender_name: r.sender_name, text: r.text, is_mentioned: r.is_mentioned === 1,
+          collected_at: r.collected_at,
+        });
+      }
+      const items = [];
+      for (const item of byItem.values()) {
+        const first = item.messages[0] || {};
+        const itemOut = {
+          id: item.id, state: item.state, priority_hint: item.priority_hint,
+          chat_name: first.chat_name, text: first.text,
+          mentioned: first.is_mentioned === true, source: item.source,
+          analyses: [],
+        };
+        const eps = item.rawIds.length
+          ? db.prepare(`SELECT DISTINCT em.episode_id FROM episode_messages em
+              WHERE em.raw_message_id IN (${Array.from({ length: item.rawIds.length }, () => '?').join(',')})`)
+            .all(...item.rawIds)
+          : [];
+        for (const ep of eps) {
+          const a = latestAnalysisForEpisode(db, ep.episode_id);
+          if (!a) continue;
+          itemOut.analyses.push(publicAnalysis(db, a));
+        }
+        itemOut.analyses.sort((a, b) => b.analysis_id - a.analysis_id);
+        items.push(itemOut);
+      }
+      return items;
+    },
+
+    analysisDetail(id) {
+      const a = findAnalysis(db, id);
+      if (!a) throw new NotFoundError('analysis', id);
+      const out = publicAnalysis(db, a);
+      return { analysis: out, raw: a };
+    },
+
+    intelligenceStatus() {
+      const now = ctx.clock ? ctx.clock.iso() : new Date().toISOString();
+      const day = now.slice(0, 10);
+      const month = now.slice(0, 7);
+      const one = (sql, ...a) => db.prepare(sql).get(...a);
+      const agg = (sql, ...a) => { const r = one(sql, ...a); return { n: r.c, ...(r.total !== undefined ? { total: r.total } : {}) }; };
+      const dayStats = () => ({
+        analyzed: one(`SELECT COUNT(*) c FROM intelligence_analyses WHERE status='COMPLETED' AND substr(created_at,1,10)=?`, day).c,
+        failed: one(`SELECT COUNT(*) c FROM intelligence_analyses WHERE status='FAILED' AND substr(created_at,1,10)=?`, day).c,
+        jobsRetry: one(`SELECT COUNT(*) c FROM intelligence_jobs WHERE status IN ('PENDING','RETRYABLE')`).c,
+      });
+      const monthStats = () => ({
+        analyzed: one(`SELECT COUNT(*) c FROM intelligence_analyses WHERE status='COMPLETED' AND substr(created_at,1,7)=?`, month).c,
+        failed: one(`SELECT COUNT(*) c FROM intelligence_analyses WHERE status='FAILED' AND substr(created_at,1,7)=?`, month).c,
+      });
+      const perf = one(`SELECT COUNT(*) c, AVG(latency_ms) avg_ms, SUM(estimated_cost) cost
+        FROM intelligence_analyses WHERE status='COMPLETED' AND substr(created_at,1,7)=?`, month);
+      const schemaInvalid = one(`SELECT COUNT(*) c FROM intelligence_analyses WHERE status='FAILED' AND error LIKE 'schema invalid%'`).c;
+      const feedbackAgg = one(`SELECT verdict, COUNT(*) c FROM analysis_feedback GROUP BY verdict`);
+      const conf = db.prepare(`SELECT
+        SUM(CASE WHEN confidence >= 0.8 THEN 1 ELSE 0 END) high,
+        SUM(CASE WHEN confidence >= 0.5 AND confidence < 0.8 THEN 1 ELSE 0 END) mid,
+        SUM(CASE WHEN confidence < 0.5 THEN 1 ELSE 0 END) low
+        FROM intelligence_analyses WHERE status='COMPLETED'`).get();
+      const budget = budgetState(db, ctx);
+      return {
+        enabled: !!ctx.cfg.intelligenceEnabled,
+        budget,
+        today: dayStats(),
+        month: monthStats(),
+        avgLatencyMs: perf.avg_ms ? Math.round(perf.avg_ms) : null,
+        costMonth: perf.cost ? Number(perf.cost.toFixed(4)) : 0,
+        schemaInvalidTotal: schemaInvalid,
+        confidence: { high: conf.high || 0, mid: conf.mid || 0, low: conf.low || 0 },
+        feedbackByVerdict: feedbackAgg || {},
+        pendingJobs: one(`SELECT COUNT(*) c FROM intelligence_jobs WHERE status='PENDING'`).c,
+        retryableJobs: one(`SELECT COUNT(*) c FROM intelligence_jobs WHERE status='RETRYABLE'`).c,
+      };
+    },
+
+    postAnalysisFeedback(body) {      const analysisId = body.analysisId;
+      const a = findAnalysis(db, analysisId);
+      if (!a) throw new NotFoundError('analysis', analysisId);
+      if (!['accepted', 'rejected', 'partial'].includes(body.verdict)) {
+        throw new BadRequestError('verdict must be accepted|rejected|partial');
+      }
+      if (body.taskSuggestion !== undefined && body.taskSuggestion !== null && !['accepted', 'rejected'].includes(body.taskSuggestion)) {
+        throw new BadRequestError('taskSuggestion must be accepted|rejected|null');
+      }
+      if (body.correctedImportance && !LEVELS.includes(body.correctedImportance)) {
+        throw new BadRequestError('correctedImportance must be HIGH|MEDIUM|LOW');
+      }
+      if (body.correctedUrgency && !LEVELS.includes(body.correctedUrgency)) {
+        throw new BadRequestError('correctedUrgency must be HIGH|MEDIUM|LOW');
+      }
+      return tx(db, () => {
+        const fb = insertFeedback(db, {
+          analysisId,
+          verdict: body.verdict,
+          correctedImportance: body.correctedImportance || null,
+          correctedUrgency: body.correctedUrgency || null,
+          correctedProjectId: body.correctedProjectId ? Number(body.correctedProjectId) : null,
+          taskSuggestion: body.taskSuggestion || null,
+          note: body.note ? String(body.note).slice(0, 500) : null,
+        });
+        appendDomainEvent(db, {
+          eventType: 'ANALYSIS_FEEDBACK', entityType: 'analysis', entityId: analysisId, actor: USER_ACTOR,
+          payload: { feedbackId: fb, verdict: body.verdict },
+        });
+        return db.prepare('SELECT * FROM analysis_feedback WHERE id = ?').get(fb);
+      });
+    },
+
     inboxDetail(id) {
       const item = findInboxItem(db, id);
       if (!item) throw new NotFoundError('inbox', id);
@@ -131,6 +286,24 @@ function createServiceFacade(db, ctx) {
         });
         return findInboxItem(db, id);
       });
+    },
+
+    markInboxRead(ids) {
+      if (!Array.isArray(ids) || !ids.length) throw new BadRequestError('ids array required');
+      let changed = 0;
+      tx(db, () => {
+        for (const id of ids) {
+          const item = findInboxItem(db, Number(id));
+          if (!item || item.state !== 'NEW') continue;
+          applyTransition(db, {
+            table: 'inbox_items', entityType: 'inbox', id: item.id, from: 'NEW', to: 'READ',
+            transitions: INBOX_TRANSITIONS, version: item.version, actor: USER_ACTOR,
+            reason: 'seen on page',
+          });
+          changed++;
+        }
+      });
+      return { changed };
     },
 
     createUserCommand(body) {

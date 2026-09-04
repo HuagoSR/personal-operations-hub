@@ -438,11 +438,12 @@ function modalPrompt(opts) {
       el.className = 'form-select';
       (f.options || []).forEach((op) => {
         const o = document.createElement('option');
-        o.value = op;
-        o.textContent = op;
+        const isObj = op !== null && typeof op === 'object';
+        o.value = isObj ? op.value : op;
+        o.textContent = isObj ? op.label : op;
         el.appendChild(o);
       });
-      el.value = f.value !== undefined ? f.value : (f.options || [''])[0];
+      el.value = f.value !== undefined ? f.value : (f.options && f.options.length ? ((typeof f.options[0] === 'object' ? f.options[0].value : f.options[0]) || '') : '');
     } else if (f.type === 'textarea') {
       el = document.createElement('textarea');
       el.className = 'form-control';

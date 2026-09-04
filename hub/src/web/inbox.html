@@ -19,19 +19,67 @@
   <script src="/app.js"></script>
   <script>
     window.hub.page(t('title.inbox'), 'inbox');
+    const H = window.hub;
+    const lv = (v) => v === 'HIGH' ? '<span class="badge text-bg-danger">' + t('intl.high') + '</span>'
+      : v === 'MEDIUM' ? '<span class="badge text-bg-warning">' + t('intl.medium') + '</span>'
+      : '<span class="badge text-bg-secondary">' + t('intl.low') + '</span>';
+
+    function intelBlock(item) {
+      const a = item.analyses && item.analyses.length ? item.analyses[0] : null;
+      if (!a) return '';
+      if (a.status !== 'COMPLETED' || !a.output) {
+        return `<div class="mt-2 p-2 border rounded">
+          <span class="badge text-bg-secondary">${H.esc(t('intl.analysis'))}</span>
+          <span class="badge text-bg-danger">${H.esc(t('intl.failed'))}</span>
+          <span class="text-muted small ms-1">${H.esc(t('intl.failedNote'))}: ${H.esc(a.error || '')}</span>
+          <details class="small mt-1"><summary>${H.esc(t('intl.viewRaw'))}</summary><pre class="json">${H.esc(JSON.stringify(a, null, 2))}</pre></details>
+        </div>`;
+      }
+      const o = a.output;
+      const feedback = a.feedback && a.feedback.length ? a.feedback[a.feedback.length - 1] : null;
+      const fbText = feedback ? {
+        accepted: t('intl.feedbackDone') + ' · ' + t('intl.accepted'),
+        rejected: t('intl.feedbackDone') + ' · ' + t('intl.rejected'),
+        partial: t('intl.feedbackDone') + ' · ' + t('intl.modify'),
+      }[feedback.verdict] || '' : '';
+      const riskBadges = (o.risk_flags || []).map((f) => `<span class="badge text-bg-danger ms-1">${H.esc(t('intl.risk'))}: ${H.esc(f)}</span>`).join('');
+      const proj = o.suggested_project && o.suggested_project.project_id ? `<div class="small">${H.esc(t('intl.project'))}: <a href="/project.html?id=${o.suggested_project.project_id}">#${o.suggested_project.project_id}</a>${o.suggested_project.confidence !== null ? ' (' + Math.round(o.suggested_project.confidence * 100) + '%)' : ''}</div>` : '';
+      const task = o.suggested_task && o.suggested_task.title ? `<div class="small">${H.esc(t('intl.task'))}: <strong>${H.esc(o.suggested_task.title)}</strong>${o.suggested_task.confidence !== null ? ' (' + Math.round(o.suggested_task.confidence * 100) + '%)' : ''}</div>` : '';
+      const action = o.requires_action
+        ? '<span class="badge text-bg-primary">' + t('intl.actionYes') + '</span>'
+        : '<span class="badge text-bg-secondary">' + t('intl.actionNo') + '</span>';
+      const buttons = feedback
+        ? `<span class="badge text-bg-success">${H.esc(fbText)}</span>`
+        : `<button class="btn btn-sm btn-outline-success" onclick="window.hubInbox.feedback(${a.analysis_id},'accepted')">${H.esc(t('intl.accepted'))}</button>
+           <button class="btn btn-sm btn-outline-danger" onclick="window.hubInbox.feedback(${a.analysis_id},'rejected')">${H.esc(t('intl.rejected'))}</button>
+           <button class="btn btn-sm btn-outline-secondary" onclick="window.hubInbox.adjust(${a.analysis_id})">${H.esc(t('intl.modify'))}</button>`;
+      return `<div class="mt-2 p-2 border rounded bg-opacity-10" style="border-color:var(--bs-border-color)">
+        <div class="d-flex flex-wrap align-items-center gap-1">
+          <span class="badge text-bg-info">${H.esc(t('intl.analysis'))}</span>
+          ${lv(o.importance)} ${lv(o.urgency)} ${action}
+          ${o.confidence !== null ? '<span class="text-muted small ms-1">' + H.esc(t('intl.confidence')) + ' ' + Math.round(o.confidence * 100) + '%</span>' : ''}
+          ${riskBadges}
+          <span class="ms-auto">${buttons}</span>
+        </div>
+        <div class="small mt-1"><strong>${H.esc(t('intl.summary'))}:</strong> ${H.esc(o.summary)}</div>
+        ${proj}${task}
+        <details class="small mt-1"><summary>${H.esc(t('intl.viewRaw'))}</summary><pre class="json">${H.esc(JSON.stringify(a, null, 2))}</pre></details>
+      </div>`;
+    }
+
     (async () => {
       const el = document.getElementById('items');
-      el.innerHTML = window.hub.skeletonList();
-      const items = await window.hub.api('GET', '/api/inbox');
-      if (!items.length) { el.innerHTML = window.hub.emptyHtml('inbox', t('inbox.empty')); return; }
+      el.innerHTML = H.skeletonList();
+      const items = await H.api('GET', '/api/inbox/intelligence');
+      if (!items.length) { el.innerHTML = H.emptyHtml('inbox', t('inbox.empty')); return; }
       el.innerHTML = items.map((i) => `
         <div class="card">
           <div class="card-body">
             <div class="d-flex justify-content-between">
               <div>
-                ${window.hub.badge(i.state)}
+                ${H.badge(i.state)}
                 ${i.priority_hint === 'mentioned' ? `<span class="badge b-danger"><i class="dot"></i>${t('inbox.mentioned')}</span>` : ''}
-                <strong>${window.hub.esc(i.chat_name || i.source)}</strong>
+                <strong>${H.esc(i.chat_name || i.source)}</strong>
                 <span class="text-muted small">#${i.id}</span>
               </div>
               <div>
@@ -41,34 +89,78 @@
                 <button class="btn btn-sm btn-outline-secondary" onclick="act(${i.id},'archive', this)">${t('common.archive')}</button>
               </div>
             </div>
+            ${i.text ? `<div class="text-muted small mt-1">${H.esc(String(i.text).slice(0, 200))}</div>` : ''}
             <div id="detail-${i.id}" class="mt-2 small" style="display:none"></div>
+            ${intelBlock(i)}
           </div>
         </div>`).join('');
+      const newIds = items.filter((i) => i.state === 'NEW').map((i) => i.id);
+      if (newIds.length) {
+        H.api('POST', '/api/inbox/read', { ids: newIds })
+          .then(() => H.updateNavBadges())
+          .catch(() => { });
+      }
       window.detail = async (id) => {
         const box = document.getElementById('detail-' + id);
         if (box.style.display !== 'none') { box.style.display = 'none'; return; }
-        const d = await window.hub.api('GET', '/api/inbox/' + id);
+        const d = await H.api('GET', '/api/inbox/' + id);
         box.style.display = 'block';
-        box.innerHTML = '<pre class="json">' + d.rawMessages.map((m) => window.hub.esc(JSON.stringify(JSON.parse(m.raw_json), null, 2))).join('\n') + '</pre>';
+        box.innerHTML = '<pre class="json">' + d.rawMessages.map((m) => H.esc(JSON.stringify(JSON.parse(m.raw_json), null, 2))).join('\n') + '</pre>';
       };
       window.act = async (id, action, btn) => {
         try {
-          await window.hub.withButton(btn, () => window.hub.api('POST', `/api/inbox/${id}/${action}`, {}));
+          await H.withButton(btn, () => H.api('POST', `/api/inbox/${id}/${action}`, {}));
           location.reload();
-        } catch (e) { window.hub.formError(e); }
+        } catch (e) { H.formError(e); }
       };
       window.convert = (id) => {
-        window.hub.modalPrompt({
+        H.modalPrompt({
           title: t('common.createTask'),
           fields: [{ type: 'text', name: 'title', placeholder: t('inbox.titlePrompt') }],
           okText: t('common.createTask'),
           onOk: async (v) => {
-            await window.hub.api('POST', `/api/inbox/${id}/convert`, { title: v.title || null });
+            await H.api('POST', `/api/inbox/${id}/convert`, { title: v.title || null });
             location.reload();
           },
         });
       };
-    })().catch(window.hub.formError);
+    })().catch(H.formError);
+
+    window.hubInbox = {
+      async feedback(analysisId, verdict) {
+        try {
+          const body = { verdict };
+          if (verdict === 'rejected') {
+            const a = await H.api('GET', `/api/analyses/${analysisId}`);
+            if (a.analysis && a.analysis.output && a.analysis.output.suggested_task && a.analysis.output.suggested_task.title) {
+              body.taskSuggestion = 'rejected';
+            }
+          }
+          await H.api('POST', `/api/analyses/${analysisId}/feedback`, body);
+          location.reload();
+        } catch (e) { H.formError(e); }
+      },
+      async adjust(analysisId) {
+        const projects = await H.api('GET', '/api/projects').catch(() => []);
+        H.modalPrompt({
+          title: t('intl.adjust'),
+          fields: [
+            { type: 'select', name: 'correctedImportance', label: t('intl.importance'), options: [{ value: '', label: t('intl.keep') }, { value: 'HIGH', label: t('intl.high') }, { value: 'MEDIUM', label: t('intl.medium') }, { value: 'LOW', label: t('intl.low') }] },
+            { type: 'select', name: 'correctedUrgency', label: t('intl.urgency'), options: [{ value: '', label: t('intl.keep') }, { value: 'HIGH', label: t('intl.high') }, { value: 'MEDIUM', label: t('intl.medium') }, { value: 'LOW', label: t('intl.low') }] },
+            { type: 'select', name: 'correctedProjectId', label: t('intl.project'), options: [{ value: '', label: t('intl.keep') }].concat(projects.map((p) => ({ value: String(p.id), label: p.name }))) },
+          ],
+          okText: t('common.save'),
+          onOk: async (v) => {
+            const body = { verdict: 'partial' };
+            if (v.correctedImportance) body.correctedImportance = v.correctedImportance;
+            if (v.correctedUrgency) body.correctedUrgency = v.correctedUrgency;
+            if (v.correctedProjectId) body.correctedProjectId = Number(v.correctedProjectId);
+            await H.api('POST', `/api/analyses/${analysisId}/feedback`, body);
+            location.reload();
+          },
+        });
+      },
+    };
   </script>
 </body>
 </html>

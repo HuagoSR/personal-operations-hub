@@ -26,7 +26,24 @@
 
 ## 后续（Phase 6 完成后评估，不自行提前）
 
-Real Project Read-only Pilot → Real Project Write Pilot → Hub Intelligence → Push/PWA → 多信息源（Email/GitHub/Calendar）→ OpenCode re-enable → 移动端响应式（暂缓项，按需启用）
+Real Project Read-only Pilot → Real Project Write Pilot → Push/PWA → 多信息源（Email/GitHub/Calendar）→ OpenCode re-enable → 移动端响应式（暂缓项，按需启用）
+
+## Phase 7 — Hub Intelligence Foundation（准备完成，等待审阅）
+
+两条飞行平面分离：**Intelligence = Analysis Plane**（本阶段）vs **Gateway Repair = Maintenance Plane**（Phase 8A，独立，不混安全域）。设计文档：`research/PHASE7_INTELLIGENCE_ARCHITECTURE.md` / `PHASE7_THREAT_MODEL.md` / `PHASE7_ANALYSIS_SCHEMA.md` / `PHASE7_EVAL_PLAN.md` / `PHASE7_PLAN.md` / `PHASE7_PREPARATION_REPORT.md`；手册：`docs/manuals/WECHAT_GATEWAY_MANUAL.md`。
+
+- ✅ 7A Intelligence Architecture & Eval Foundation（数据模型/Schema/StubClient/Eval harness/Prompt v1；仅 synthetic）
+- ✅ 7B 离线 Shadow Analysis（DeepSeek 启用；质量基线 schema 100%/F1 1.0；历史 Inbox 11/11）
+- ✅ 7C Inbox Intelligence UI（enrichment + feedback 闭环）
+- 🔄 7D Live Shadow Mode（**观察期进行中**：14 天 + 指标门槛，`/api/intelligence/status` 仪表 + `scripts/intelligence-observe.js` 日快照）
+- ⏳ 7E Assisted TaskCandidate（一键创建，仍走 Approval；观察数据达标后评估）
+- ⏳ 7F Briefing & Intelligent Routing
+
+边界：自动化等级上限 **L3**（L4 需单独批准）；未获数据出站授权前仅 synthetic/anonymized 数据；Intelligence 永不成 ingest 同步依赖；微信只读 = System Invariant（WECHAT_WRITE=FORBIDDEN，D021）；Docker socket 永不暴露 Worker。
+
+## Phase 8A — Gateway Self-Maintenance（独立阶段，设计就绪待单独授权）
+
+Diagnose/Develop/Apply/Operate 四层 Envelope + Gateway Ops Facade 白名单 + `WECHAT_GATEWAY_MANUAL` 作为 Harness Context。见 `research/PHASE7_PLAN.md` 与 `docs/manuals/WECHAT_GATEWAY_MANUAL.md`。
 
 ## 阶段推进规则
 

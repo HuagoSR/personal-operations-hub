@@ -83,3 +83,26 @@ L4 High-risk（sudo/git push/破坏性删除/系统配置/凭据访问：永远�
 ## 七、关键架构决策
 
 D001 微信永久只读 / D002 微信非控制渠道 / D003 Hub-Worker 分离 / D004 外部请求必须过候选+审批 / D005 文件与代码执行交给 Worker / D006 控制渠道 Web/PWA / D007 不用 OpenClaw / D008 transactional outbox / D009 Grant≠OS 边界（Enforcement 独立 Gate）/ D010 L4>L2>L3。全部见 DECISIONS.md。
+
+## 八、PLANNED：Hub Intelligence（Phase 7，Analysis Plane）— 7A–7D 已实施 ✅
+
+```
+Source（微信只读）
+  ↓ Event（现有）
+  ↓ 确定性 pre-filter（inboxRule；v1 只分析进 Inbox 的消息）
+  ↓ message_episodes（确定性聚合：同 chat + 时间窗 + 条数上限，配置化）✅
+  ↓ Context Builder（最小必要上下文）✅
+  ↓ Intelligence Runner（独立异步队列；LLM 零权限）✅（live shadow 运行中）
+  ↓ intelligence_analyses（append-only 证据；schema/prompt/provider/model 版本化）✅
+  ↓ Deterministic Policy Fusion（urgency/importance 规则修正）——规划
+  ↓ Inbox Enrichment / Suggested Project / Suggested TaskCandidate（L3 上限）✅（UI+反馈已上线，一键创建候选=7E）
+```
+
+- 数据模型（migration 008 已实施）：intelligence_jobs / intelligence_analyses(append-only) / message_episodes / episode_messages / analysis_feedback；chat_policies 扩展预留
+- Provider 抽象：`IntelligenceModelClient.analyze(input, schema, options)`（记录 provider/model/latency/usage/cost）；v1 OpenAI 兼容（DeepSeek）+ StubClient；Provider 与 DataEgressPolicy 分离（D018）✅
+- Harness Context：docs/manuals/ 手册体系（WECHAT_GATEWAY_MANUAL + WECHAT_LOGIN_GUIDE）+ Context Registry 按任务注入（D021）✅
+- 详细设计：`research/PHASE7_*` 系列文档（VPS/本地，不上 GitHub）
+
+## 九、PLANNED：Gateway Self-Maintenance（Phase 8A，Maintenance Plane）
+
+Diagnose / Develop Repair / Apply Repair / Operate 四层 Envelope（D022）；Gateway Ops Facade 白名单操作（D020：Docker socket 永不暴露 Worker）；微信只读 System Invariant 五层强制（D019）。设计见 `research/PHASE7_PLAN.md` 与 `docs/manuals/WECHAT_GATEWAY_MANUAL.md`。

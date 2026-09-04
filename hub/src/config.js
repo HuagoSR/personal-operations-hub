@@ -30,6 +30,21 @@ const DEFAULTS = {
   workerDeepseekApiKeyFile: '/home/huagosr/.opencode/.env',
   selfDevWorkspace: '/home/huagosr/worker-sandbox-untrusted/hub-dev',
   selfDevBaseTag: 'phase6d-known-good',
+  intelligenceEnabled: false,
+  episodeIdleMs: 600000,
+  episodeMaxMessages: 30,
+  intelligenceSweepIntervalMs: 60000,
+  intelligenceProcessIntervalMs: 30000,
+  intelligenceProvider: 'deepseek',
+  intelligenceModel: 'deepseek-chat',
+  intelligenceApiBase: 'https://api.deepseek.com',
+  intelligenceApiKeyEnv: 'HUB_INTELLIGENCE_API_KEY',
+  intelligenceApiKeyFile: '/home/huagosr/.hub-intelligence.env',
+  intelligenceDenyEgressChats: [],
+  intelligenceBudgetDailyUsd: 0.5,
+  intelligenceBudgetMonthlyUsd: 5,
+  analysisThresholdHigh: 0.8,
+  analysisThresholdShow: 0.5,
 };
 
 function load(file) {
@@ -46,6 +61,12 @@ function load(file) {
     const idx = raw.indexOf('=');
     if (idx > 0) cfg.workerDeepseekApiKey = raw.slice(idx + 1).trim();
   }
+  if (cfg.intelligenceApiKeyFile && fs.existsSync(cfg.intelligenceApiKeyFile)) {
+    const raw = fs.readFileSync(cfg.intelligenceApiKeyFile, 'utf8').split('\n')[0];
+    const idx = raw.indexOf('=');
+    if (idx > 0) cfg.intelligenceApiKey = raw.slice(idx + 1).trim();
+  }
+  if (process.env.HUB_INTELLIGENCE_API_KEY) cfg.intelligenceApiKey = process.env.HUB_INTELLIGENCE_API_KEY;
   if (process.env.HUB_WORKER_DEEPSEEK_API_KEY) cfg.workerDeepseekApiKey = process.env.HUB_WORKER_DEEPSEEK_API_KEY;
   if (process.env.HUB_PORT) cfg.port = parseInt(process.env.HUB_PORT, 10);
   if (process.env.HUB_HOST) cfg.host = process.env.HUB_HOST;
