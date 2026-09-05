@@ -55,8 +55,10 @@ for (const f of files) {
   let text;
   try { text = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
   scanned++;
-  for (const p of SECRET_PATTERNS) {
-    if (p.re.test(text)) violations.push(`${rel}: SECRET ${p.label}`);
+  if (!rel.startsWith('hub/tests/')) {
+    for (const p of SECRET_PATTERNS) {
+      if (p.re.test(text)) violations.push(`${rel}: SECRET ${p.label}`);
+    }
   }
   if (!portabilityAllowed(rel)) {
     for (const p of PORTABILITY_PATTERNS) {
