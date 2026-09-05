@@ -41,10 +41,10 @@ node scripts/intelligence-observe.js   # 智能分析观察期每日快照
 ## 测试
 
 ```bash
-npm test   # 131 项
+npm test   # 134 项
 ```
 
-131 项：可靠性矩阵（重复摄入/双审批/crash 恢复/重复派发/Worker 失败/WAITING_FOR_USER 重启恢复/审批过期/Grant 吊销/Result 不可变/Worker 不能完成 Task）+ CRASH/TIMEOUT/权限路径 + 状态机与 ingest 边界 + API 正负面用例 + 编码防线（UTF-8/密集 `?` 拦截）+ Markdown XSS 向量 + 双语字典一致性 + DOM 垫片 + Intelligence（episode 构建/切分、job 幂等与 claim、校验链、append-only、egress、预算、去重、Inbox 聚合与反馈、markInboxRead）。
+134 项：可靠性矩阵（重复摄入/双审批/crash 恢复/重复派发/Worker 失败/WAITING_FOR_USER 重启恢复/审批过期/Grant 吊销/Result 不可变/Worker 不能完成 Task）+ CRASH/TIMEOUT/权限路径 + 状态机与 ingest 边界 + API 正负面用例 + 编码防线（UTF-8/密集 `?` 拦截）+ Markdown XSS 向量 + 双语字典一致性 + DOM 垫片 + Intelligence（episode 构建/切分、job 幂等与 claim、校验链、append-only、egress、预算、去重、Inbox 聚合与反馈、markInboxRead）。
 
 评测语料与跑分：`eval/intelligence/`（corpus 15 例 13 场景 + eval-run/score/fixture）。
 

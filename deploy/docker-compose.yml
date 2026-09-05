@@ -1,7 +1,9 @@
 services:
   agent-wechat:
-    image: ghcr.io/thisnick/agent-wechat:latest
-    container_name: wx-research-agent-wechat
+    # Validated for Personal Operations Hub v0.1.0 (see THIRD_PARTY.md).
+    # Do NOT switch back to :latest - always pin the validated tag@digest.
+    image: ${AGENT_WECHAT_IMAGE:-ghcr.io/thisnick/agent-wechat@sha256:31a4e351c191bcbfc75e5c10be51e207d22a3eedd97f3ff56ad579fcce717b24}
+    container_name: ${AGENT_WECHAT_CONTAINER_NAME:-wx-research-agent-wechat}
     security_opt:
       - seccomp=unconfined
     cap_add:
@@ -9,11 +11,15 @@ services:
     ports:
       - "127.0.0.1:6174:6174"
     volumes:
-      - wx-research-data:/data
-      - wx-research-home:/home/wechat
+      - agent_wechat_data:/data
+      - agent_wechat_home:/home/wechat
       - ./token:/data/auth-token:ro
     restart: unless-stopped
 
 volumes:
-  wx-research-data:
-  wx-research-home:
+  # Explicit `name:` keeps the real Docker volume names stable regardless of
+  # the Compose project name. Defaults preserve existing installations.
+  agent_wechat_data:
+    name: ${AGENT_WECHAT_DATA_VOLUME:-wx-research-data}
+  agent_wechat_home:
+    name: ${AGENT_WECHAT_HOME_VOLUME:-wx-research-home}

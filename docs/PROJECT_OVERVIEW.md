@@ -29,7 +29,7 @@
 | Controlled Pilot（Gomoku） | ✅ 完成：10 PASS + 2 PASS_WITH_NOTES，结论 READY_FOR_REAL_PROJECT_READ_ONLY |
 | Control Web 重构与 UX 打磨（6A–6F） | ✅ 上线：数据基础、侧边栏导航、Conversation-first 时间线、全局运维视图；亮暗主题、中英双语、Markdown、toast/模态、未读角标、骨架屏、智能刷新、相对时间戳 |
 | Hub Self 开发闭环（6E） | ✅ 完成：Safe Self-Modification Pilot 全闭环（隔离副本 → Codex → Result facts → Prepare → 手动 apply → 回滚演练 → 再 apply） |
-| Hub Intelligence（7A–7D） | ✅ 完成：Analysis 平面底座（episode/校验链/append-only 证据）、真实模型基线（deepseek-chat schema 100%）、Inbox 智能 UI + 反馈闭环、**Live Shadow 观察期进行中**（只建议不执行，预算 $0.5/日 + $5/月，131 测试全绿） |
+| Hub Intelligence（7A–7D） | ✅ 完成：Analysis 平面底座（episode/校验链/append-only 证据）、真实模型基线（deepseek-chat schema 100%）、Inbox 智能 UI + 反馈闭环、**Live Shadow 观察期进行中**（只建议不执行，预算 $0.5/日 + $5/月，134 测试全绿） |
 | Gateway Self-Maintenance（8A） | ⏳ 设计完成（四层 Envelope + Ops Facade 白名单），待单独授权实施 |
 | 移动端响应式 | ⏸ 暂缓（用户决定，后续按需启用） |
 | 通知 / Push / 多源 | ❌ 未开发（后续评估） |
