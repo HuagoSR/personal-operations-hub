@@ -119,8 +119,23 @@ async function runJob(db, ctx, job, clientOverride) {
     return null;
   }
   const projects = db.prepare('SELECT id, name, description FROM projects ORDER BY sort_order, id').all();
-  const relatedTasks = db.prepare(`SELECT DISTINCT t.id, t.title, t.state FROM tasks t
-    WHERE t.state IN ('OPEN','EXECUTING') ORDER BY t.id DESC LIMIT 20`).all();
+  // Data minimization (D023): only tasks derived from THIS chat's own WeChat events may
+  // egress (same-chat relation: raw_messages.chat_id -> event_raw_messages ->
+  // task_candidates.source_event_id). No reliable relation -> empty list; the prompt
+  // omits the related-tasks section entirely when the list is empty.
+  const relatedTasks = db.prepare(`SELECT DISTINCT t.id, t.title, t.state
+    FROM tasks t
+    JOIN task_candidates c ON c.id = t.candidate_id
+    WHERE t.state IN ('OPEN','EXECUTING')
+      AND c.origin_type = 'WECHAT_EVENT'
+      AND c.source_event_id IN (
+        SELECT erm.event_id
+        FROM event_raw_messages erm
+        JOIN raw_messages rm ON rm.id = erm.raw_message_id
+        WHERE rm.chat_id = ?
+      )
+    ORDER BY t.id DESC
+    LIMIT 5`).all(chatId);
   const context = buildContext(db, { episode, messages, projects, relatedTasks });
   const messagesModel = buildMessages(context);
   const inputHash = inputHashOf(context);

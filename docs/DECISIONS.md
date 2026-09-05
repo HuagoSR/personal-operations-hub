@@ -142,8 +142,10 @@
 ## D023 — Intelligence 数据出站政策 = Inbox-only + 匿名身份 + 敏感 chat Deny（B+C+D）
 
 - 状态：ACCEPTED（2026-09-02，Phase 7 定稿）
-- 内容：只有进入 Inbox 的消息可出站分析；sender/群名一律替换为稳定匿名 ID；用户可标记敏感 chat 整体永不出站（正文不做 [REDACTED] 式削改——会破坏语义理解，敏感 chat 直接整群禁出站）；不开放无条件原始发送；本地模型方案留待以后。
+- 内容：只有进入 Inbox 的消息可出站分析；sender/群名一律替换为 episode 内稳定的匿名 ID（episode-local，跨 episode 不可关联——比跨 episode 假名更保守、更安全）；用户可标记敏感 chat 整体永不出站（正文不做 [REDACTED] 式削改——会破坏语义理解，敏感 chat 直接整群禁出站）；不开放无条件原始发送；本地模型方案留待以后。
 - 理由：把身份信息压到最低同时保留语义；敏感边界用整群 deny 而非内容阉割。
+- 备注（2026-09-02，数据最小化修正）：related_tasks 上下文仅允许「同 chat 来源任务」（episode.chat_id → raw_messages → event_raw_messages → task_candidates(WECHAT_EVENT) → tasks 的可靠关联链）；无可靠关联时必须为空列表，禁止以「可能有用」为由发送全局任务标题。
+- 备注（PLANNED）：未来引入「敏感 Project」概念时，Project 的 name/description 出站也应纳入 DataEgressPolicy（当前仅敏感 chat 受控）。
 
 ## D024 — Intelligence 输入保留：临时 Model Input 用完即弃
 
@@ -151,11 +153,12 @@
 - 内容：不为 Intelligence 建立第二份微信全文库。RawMessage 是唯一原始存储；发给 Provider 的输入是临时构建、用完即弃；永久保存仅 input_hash + append-only Analysis（output_json/reason_codes/evidence_refs）+ provider/model/token/cost/latency。Eval 语料入库流程 = 用户明确选择样本 → 匿名化 → 人工确认 → corpus。
 - 理由：Analysis 是证据仓库不是原始数据仓库；隐私面最小化。
 
-## D025 — Intelligence 预算：\/月硬上限 + \.5/日保护线
+## D025 — Intelligence 预算：$5/月硬上限 + $0.5/日保护线
 
 - 状态：ACCEPTED（2026-09-02，Phase 7 定稿）
-- 内容：月度硬上限 \、日保护线 \.5；70%/90% 用量预警，100% 自动暂停新云分析（不影响 Inbox 与已有分析展示）。v1 只分析 Inbox + episode 聚合使调用量本应很小。
+- 内容：月度硬上限 $5、日保护线 $0.5；70%/90% 用量预警，100% 自动暂停新云分析（不影响 Inbox 与已有分析展示）。v1 只分析 Inbox + episode 聚合使调用量本应很小。
 - 理由：安全阀而非成本预测；防失控。
+- 备注（2026-09-02）：estimated_cost 仅为本地预算估算，不是 Provider 账单真相；价格表变更必须同步代码（src/intelligence/client.js estimateCost），否则 budget gate 可能偏差。
 
 ## D026 — Shadow 观察期 = 14 天 + 指标门槛
 

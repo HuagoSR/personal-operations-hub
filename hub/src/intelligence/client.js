@@ -82,6 +82,8 @@ function createOpenAICompatibleClient(cfg) {
 function estimateCost(model, usage) {
   if (!usage) return null;
   // rough DeepSeek pricing ($/1M tokens): input 0.27, output 1.10 (deepseek-chat)
+  // NOTE: estimated_cost 仅为本地预算估算（D025 budget gate），不是 Provider 账单真相；
+  // 价格表变更必须同步更新此处，否则 budget gate 可能偏差。
   const p = model === 'deepseek-chat'
     ? { in: 0.27e-6, out: 1.10e-6 }
     : { in: 0.55e-6, out: 2.19e-6 };

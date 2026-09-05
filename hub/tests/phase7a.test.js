@@ -215,6 +215,100 @@ test('7A: egress denied chat fails job without calling model', async () => {
   assert.match(job.last_error, /egress denied/);
 });
 
+/* ---- 7D fix: related_tasks data minimization (same-chat WECHAT_EVENT chain only) ---- */
+
+// Seed a task derived from a WeChat event of the given chat (direct SQL for chain shape):
+// raw_message -> event -> event_raw_messages -> candidate(WECHAT_EVENT) -> task
+function seedChatTask(db, { chatId, taskId, candidateTitle, taskTitle, state, originType }) {
+  const rm = seedRaw(db, { chatId, senderId: 's1', text: `seed ${chatId} ${taskId}`, at: '2026-09-02T00:00:00.000Z' });
+  const ev = db.prepare(`INSERT INTO events (event_type, priority_hint, source, actor_type, actor_id)
+    VALUES ('MENTION', 'normal', 'wechat', 'GATEWAY', 'gateway')`).run();
+  const eventId = Number(ev.lastInsertRowid);
+  db.prepare('INSERT INTO event_raw_messages (event_id, raw_message_id) VALUES (?, ?)').run(eventId, rm.id);
+  const cand = db.prepare(`INSERT INTO task_candidates
+    (origin_type, origin_id, title, source_event_id, actor_type, actor_id)
+    VALUES (?, ?, ?, ?, 'GATEWAY', 'gateway')`)
+    .run(originType || 'WECHAT_EVENT', `event-${eventId}`, candidateTitle || `cand ${taskId}`, eventId);
+  const t = db.prepare('INSERT INTO tasks (candidate_id, title, state) VALUES (?, ?, ?)')
+    .run(Number(cand.lastInsertRowid), taskTitle, state || 'EXECUTING');
+  return Number(t.lastInsertRowid);
+}
+
+function capturingClient(captured) {
+  return createStubClient((messages) => {
+    captured.push(messages);
+    return JSON.stringify({
+      summary: 'stub analysis', importance: 'LOW', urgency: 'LOW', requires_action: false,
+      intent: 'SOCIAL', deadline: { text: null, resolved: null },
+      suggested_project: { project_id: null, confidence: null },
+      suggested_task: { title: null, description: null, confidence: null },
+      reason_codes: [], evidence_refs: [], risk_flags: [], confidence: 0.1,
+    });
+  });
+}
+
+function runJobCapture(db, { chatId, captured }) {
+  const t0 = '2026-09-02T05:00:00.000Z';
+  const m1 = seedRaw(db, { chatId, senderId: 's1', text: 'episode message', at: t0 });
+  const e = episodeForMessage(db, { chatId, chatType: 'group', rawMessageId: m1.id, atIso: t0, idleMs: 600000, maxMessages: 30 });
+  closeEpisode(db, e.id, t0);
+  const j = enqueueEpisodeForAnalysis(db, { episodeId: e.id });
+  const ctx = makeCtx({ cfg: { intelligenceDenyEgressChats: [], intelligenceModel: 'stub-model', outboxMaxAttempts: 3, intelligenceBudgetDailyUsd: 0.5, intelligenceBudgetMonthlyUsd: 5 } });
+  ctx.clock = clockAt('2026-09-02T05:00:30.000Z');
+  ctx.cfg.intelligenceProvider = 'stub';
+  const client = capturingClient(captured);
+  return runJob(db, ctx, j, client);
+}
+
+test('7D-fix: same-chat derived tasks appear in context, cross-chat and USER_COMMAND tasks do not', async () => {
+  const { db } = makeDb();
+  // chatA: one same-chat EXECUTING task + one COMPLETED same-chat task (must NOT appear)
+  seedChatTask(db, { chatId: 'chatA', taskId: 1, taskTitle: 'ChatA Active Task', state: 'EXECUTING' });
+  seedChatTask(db, { chatId: 'chatA', taskId: 2, taskTitle: 'ChatA Done Task', state: 'COMPLETED' });
+  // chatB: an EXECUTING task from another chat (must NOT leak)
+  seedChatTask(db, { chatId: 'chatB', taskId: 3, taskTitle: 'ChatB Task', state: 'EXECUTING' });
+  // USER_COMMAND-derived task (must NOT appear: no chat relation)
+  {
+    const cand = db.prepare(`INSERT INTO task_candidates
+      (origin_type, origin_id, title, actor_type, actor_id)
+      VALUES ('USER_COMMAND', 'cmd-1', 'uc', 'USER', 'owner')`).run();
+    db.prepare('INSERT INTO tasks (candidate_id, title, state) VALUES (?, ?, ?)')
+      .run(Number(cand.lastInsertRowid), 'UserCommand Task', 'EXECUTING');
+  }
+  const captured = [];
+  const analysis = await runJobCapture(db, { chatId: 'chatA', captured });
+  assert.ok(analysis && analysis.status === 'COMPLETED');
+  const userContent = captured[0][1].content;
+  assert.ok(userContent.includes('ChatA Active Task'), 'same-chat active task included');
+  assert.ok(!userContent.includes('ChatA Done Task'), 'completed same-chat task excluded');
+  assert.ok(!userContent.includes('ChatB Task'), 'cross-chat task must never appear');
+  assert.ok(!userContent.includes('UserCommand Task'), 'user-command task excluded');
+});
+
+test('7D-fix: no reliable relation -> related_tasks section omitted entirely', async () => {
+  const { db } = makeDb();
+  // a task exists somewhere (chatB) but the analyzed chat (chatZ) has no relation at all
+  seedChatTask(db, { chatId: 'chatB', taskId: 5, taskTitle: 'ChatB Orphan Task', state: 'OPEN' });
+  const captured = [];
+  const analysis = await runJobCapture(db, { chatId: 'chatZ', captured });
+  assert.ok(analysis && analysis.status === 'COMPLETED');
+  const userContent = captured[0][1].content;
+  assert.ok(!userContent.includes('相关未完成任务'), 'related-tasks section omitted when no relation');
+  assert.ok(!userContent.includes('ChatB Orphan Task'), 'unrelated task never egresses');
+});
+
+test('7D-fix: LIMIT 5 caps same-chat related tasks', async () => {
+  const { db } = makeDb();
+  for (let i = 1; i <= 8; i++) {
+    seedChatTask(db, { chatId: 'chatC', taskId: 10 + i, taskTitle: `ChatC Task ${i}`, state: 'EXECUTING' });
+  }
+  const captured = [];
+  await runJobCapture(db, { chatId: 'chatC', captured });
+  const userContent = captured[0][1].content;
+  const listed = (userContent.match(/ChatC Task \d+/g) || []).length;
+  assert.equal(listed, 5, 'at most 5 same-chat tasks in context');
+});
+
 test('7A: budget state computes and blocks at limits', () => {
   const { db } = makeDb();
   const ctx = makeCtx({ cfg: { intelligenceBudgetDailyUsd: 0.5, intelligenceBudgetMonthlyUsd: 5 } });
