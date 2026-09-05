@@ -6,9 +6,11 @@ set -euo pipefail
 if [ "$0" != "/tmp/apply-hub.sh" ]; then cp "$0" /tmp/apply-hub.sh; exec bash /tmp/apply-hub.sh "$@"; fi
 
 REQ_ID="${1:?usage: apply-hub.sh <applyRequestId> [source_commit]}"
-PROD="$HOME/wechat-linux-research/hub"
+PROD="${HUB_PROD_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 DEV="${HUB_DEV:-$HOME/worker-sandbox-untrusted/hub-dev}"
-BACKUP_DIR="$HOME/wechat-linux-research/hub-backups"
+BACKUP_DIR="${HUB_BACKUP_DIR:-$HOME/pohub-backups}"
+ENV_FILE="${HUB_ENV_FILE:-$HOME/.config/personal-operations-hub/hub.env}"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
 MANIFEST="$BACKUP_DIR/manifest.json"
 BASE_TAG="${HUB_BASE_TAG:-phase6d-known-good}"
 TS=$(date +%Y%m%d-%H%M%S)

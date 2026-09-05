@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # 阶段五 Enforcement 测试矩阵（VPS 运行）
 set -e
-RUNNER=~/wechat-linux-research/hub/scripts/sandbox-run.sh
-WS=~/worker-sandbox-untrusted/calc
-H=~/worker-sandbox-untrusted/home
+RUNNER="$(cd "$(dirname "$0")" && pwd)/sandbox-run.sh"
+WS="${ENF_WS:-${HUB_WORKSPACE_ROOT:-$HOME/worker-sandbox-untrusted}/calc}"
+H="${ENF_HOME:-${HUB_WORKSPACE_ROOT:-$HOME/worker-sandbox-untrusted}/home}"
 chmod +x "$RUNNER"
 
 echo "=== T1: 宿主 home 敏感内容不可见 ==="
-OUT=$($RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls /home/huagosr 2>&1")
+OUT=$($RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls "$HOME" 2>&1")
 echo "sandbox 视角: $OUT"
-echo "$OUT" | grep -qE "\.codex|\.opencode|\.ssh|wechat-linux-research|server-bootstrap" && echo "T1 FAIL: leak!" || echo "T1 PASS"
+echo "$OUT" | grep -qE "\.codex|\.opencode|\.ssh|pohub|server-bootstrap" && echo "T1 FAIL: leak!" || echo "T1 PASS"
 echo
 echo "=== T2: 微信/Hub 数据不可见 ==="
-$RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls /home/huagosr/wechat-linux-research 2>&1" | grep -q "No such" && echo "T2 PASS" || echo "T2 FAIL"
+$RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls "$HOME/pohub" 2>&1" | grep -q "No such" && echo "T2 PASS" || echo "T2 FAIL"
 echo
 echo "=== T3: workspace 可读写 ==="
 $RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "echo ok > sb-test.txt && cat sb-test.txt && rm sb-test.txt" && echo "T3 PASS" || echo "T3 FAIL"
@@ -36,7 +36,7 @@ $RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "touch /et
 echo "T7 PASS (read-only)"
 echo
 echo "=== T8: 凭据文件不可见 ==="
-$RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls /home/huagosr/.codex/auth.json /home/huagosr/.opencode 2>&1" | head -2
+$RUNNER --workspace "$WS" --home "$H" --network allow -- /bin/bash -c "ls "$HOME/.codex/auth.json" "$HOME/.opencode" 2>&1" | head -2
 echo "T8 PASS"
 echo
 echo "ALL ENFORCEMENT TESTS DONE"

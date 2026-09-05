@@ -5,8 +5,10 @@
 set -euo pipefail
 if [ "$0" != "/tmp/rollback-hub.sh" ]; then cp "$0" /tmp/rollback-hub.sh; exec bash /tmp/rollback-hub.sh "$@"; fi
 
-PROD="$HOME/wechat-linux-research/hub"
-BACKUP_DIR="$HOME/wechat-linux-research/hub-backups"
+PROD="${HUB_PROD_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+BACKUP_DIR="${HUB_BACKUP_DIR:-$HOME/pohub-backups}"
+ENV_FILE="${HUB_ENV_FILE:-$HOME/.config/personal-operations-hub/hub.env}"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
 SEL="${1:-latest}"
 if [ "$SEL" == "latest" ]; then
   TAR=$(ls -t "$BACKUP_DIR"/hub-*.tar.gz 2>/dev/null | head -n 1)

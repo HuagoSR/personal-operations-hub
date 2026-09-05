@@ -159,7 +159,7 @@
           ${ar.source_commit ? `<div class="small" style="margin-bottom:6px">${t('conv.sourceCommit')}: <code>${H.esc(String(ar.source_commit).slice(0, 12))}</code>${ar.base_commit ? ` · ${t('conv.base')} <code>${H.esc(String(ar.base_commit).slice(0, 12))}</code>` : ''}</div>` : ''}
           ${ar.commit_subject ? `<div class="small text-muted">${H.esc(ar.commit_subject)}</div>` : ''}
           ${stat ? `<div class="small">${stat.files} ${t('common.filesUnit')} +${stat.additions} -${stat.deletions}${files.length ? '：' + H.esc(files.map((f) => f.path).join('、').slice(0, 160)) : ''}</div>` : ''}
-          ${ar.state === 'PREPARED' ? `<div class="small mt-1 text-muted">${t('conv.applyHint')}<code>bash ~/wechat-linux-research/hub/scripts/apply-hub.sh ${ar.id}</code></div>` : ''}
+          ${ar.state === 'PREPARED' ? `<div class="small mt-1 text-muted">${t('conv.applyHint')}<code>bash ${HUB_PROD_DIR}/scripts/apply-hub.sh ${ar.id}</code></div>` : ''}
         </div>
       </div>`;
     }

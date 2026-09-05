@@ -121,7 +121,7 @@
           <div class="card-body">
             ${ar.commit_subject ? `<div class="small text-muted">${window.hub.esc(ar.commit_subject)}</div>` : ''}
             ${stat ? `<div class="small">${stat.files} ${t('common.filesUnit')} +${stat.additions} -${stat.deletions}${files.length ? '：' + window.hub.esc(files.map((f) => f.path).join('、').slice(0, 160)) : ''}</div>` : ''}
-            <div class="small mt-1 text-muted">${t('appr.applyHintManual')}<code>bash ~/wechat-linux-research/hub/scripts/apply-hub.sh ${ar.id}</code>${t('appr.applyHintRollback')}<code>bash ~/wechat-linux-research/hub/scripts/rollback-hub.sh latest</code></div>
+            <div class="small mt-1 text-muted">${t('appr.applyHintManual')}<code>bash ${HUB_PROD_DIR}/scripts/apply-hub.sh ${ar.id}</code>${t('appr.applyHintRollback')}<code>bash ${HUB_PROD_DIR}/scripts/rollback-hub.sh latest</code></div>
           </div>
         </div>`;
       }).join('') || `<div class="panel-empty">${t('appr.empty.apply')}</div>`;

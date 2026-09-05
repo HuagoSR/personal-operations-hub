@@ -2,15 +2,16 @@
 # soak-check.sh <day> — verify expected markers vs spool, print day summary
 set -u
 DAY="${1:?usage: soak-check.sh <day-number>}"
-G="$HOME/wechat-linux-research/gateway"
-OUT="$HOME/wechat-linux-research/research/soak/day-$DAY.md"
+G="$(cd "$(dirname "$0")/.." && pwd)"
+SOAK_DIR="${SOAK_DIR:-$G/../research/soak}"
+OUT="$SOAK_DIR/day-$DAY.md"
 METRICS_DAY=$(date -u +%F)
 
-DAY="$DAY" node -e '
+DAY="$DAY" GATEWAY_DIR="$G" SOAK_DIR="$SOAK_DIR" node -e '
 const fs = require("fs");
 const path = require("path");
 const day = parseInt(process.env.DAY, 10);
-const dir = process.env.HOME + "/wechat-linux-research/gateway/data/spool";
+const dir = process.env.GATEWAY_DIR + "/data/spool";
 const files = fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
 const all = [];
 for (const f of files) {
@@ -22,15 +23,18 @@ const expected = [
   `WGATE_D${day}_TEXT_001`, `WGATE_D${day}_TEXT_002`, `WGATE_D${day}_TEXT_003`,
   `WGATE_D${day}_AT_001`, `WGATE_D${day}_REPLY_001`,
 ];
-// relaxed fallback: AT/REPLY markers may be sent without the WGATE_D{n}_ prefix
-const now = Date.now();
-const relaxed = (m, suffix) =>
-  !m.text.includes(`WGATE_D${day}_${suffix}`) &&
-  m.text.includes(suffix) &&
-  now - new Date(m.collected_at).getTime() < 26 * 3600 * 1000;
 const found = {};
 for (const m of all) {
   for (const e of expected) if ((m.text || "").includes(e)) found[e] = found[e] || m;
+}
+// relaxed fallback (second pass, only for still-missing AT/REPLY;
+// strict matches always win over relaxed ones)
+const now = Date.now();
+const relaxed = (m, suffix) =>
+  !(m.text || "").includes(`WGATE_D${day}_${suffix}`) &&
+  (m.text || "").includes(suffix) &&
+  now - new Date(m.collected_at).getTime() < 26 * 3600 * 1000;
+for (const m of all) {
   if (!found[`WGATE_D${day}_AT_001`] && relaxed(m, "AT_001")) found[`WGATE_D${day}_AT_001`] = m;
   if (!found[`WGATE_D${day}_REPLY_001`] && relaxed(m, "REPLY_001")) found[`WGATE_D${day}_REPLY_001`] = m;
 }
@@ -40,7 +44,7 @@ const atMsg = found[`WGATE_D${day}_AT_001`];
 const replyMsg = found[`WGATE_D${day}_REPLY_001`];
 
 const m = (() => {
-  const f = process.env.HOME + "/wechat-linux-research/gateway/data/metrics/" + new Date().toISOString().slice(0, 10) + ".json";
+  const f = process.env.GATEWAY_DIR + "/data/metrics/" + new Date().toISOString().slice(0, 10) + ".json";
   if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, "utf8"));
   return null;
 })();
@@ -80,12 +84,12 @@ if (m) {
 lines.push(``);
 lines.push(`## 状态`);
 lines.push(``);
-const h = JSON.parse(fs.readFileSync(process.env.HOME + "/wechat-linux-research/gateway/data/state/health.json", "utf8"));
+const h = JSON.parse(fs.readFileSync(process.env.GATEWAY_DIR + "/data/state/health.json", "utf8"));
 lines.push(`- gateway：${h.gateway}；agent：${h.agent_wechat}；微信：${h.wechat_auth}`);
 lines.push(`- poll_failures_consecutive：${h.poll_failures_consecutive}`);
 lines.push(`- uptime：${(h.uptime_seconds / 3600).toFixed(1)}h`);
 const out = lines.join("\n");
-const outFile = process.env.HOME + "/wechat-linux-research/research/soak/day-" + day + ".md";
+const outFile = process.env.SOAK_DIR + "/day-" + day + ".md";
 fs.writeFileSync(outFile, out);
 console.log(out);
 console.log("\n== written to " + outFile);

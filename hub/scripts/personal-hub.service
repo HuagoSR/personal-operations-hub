@@ -4,12 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/wechat-linux-research/hub
+WorkingDirectory=%h/pohub/hub
 ExecStart=/usr/bin/node src/main.js
 Restart=on-failure
 RestartSec=10
 Environment=NODE_ENV=production
-EnvironmentFile=-%h/.hub-intelligence.env
+EnvironmentFile=-%h/.config/personal-operations-hub/hub.env
 
 [Install]
 WantedBy=default.target

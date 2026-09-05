@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # report.sh — print today's metrics summary
 set -u
-GATEWAY_DIR="$HOME/wechat-linux-research/gateway"
+GATEWAY_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DAY=$(date -u +%F)
 M="$GATEWAY_DIR/data/metrics/$DAY.json"
 
 if [ -f "$M" ]; then
-  node -e '
-    const m = require(process.env.HOME + "/wechat-linux-research/gateway/data/metrics/" + new Date().toISOString().slice(0, 10) + ".json");
+  GATEWAY_DIR="$GATEWAY_DIR" node -e '
+    const m = require(process.env.GATEWAY_DIR + "/data/metrics/" + new Date().toISOString().slice(0, 10) + ".json");
     console.log("day:", m.day);
     console.log("poll_count:", m.poll_count);
     console.log("poll_failures:", m.poll_failures);

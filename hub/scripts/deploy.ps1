@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $HUB_LOCAL = Split-Path -Parent $PSScriptRoot
-$REMOTE = "huago-cone"
-$REMOTE_DIR = "wechat-linux-research/hub"
+$REMOTE = if ($env:HUB_DEPLOY_REMOTE) { $env:HUB_DEPLOY_REMOTE } else { "huago-cone" }
+$REMOTE_DIR = if ($env:HUB_DEPLOY_REMOTE_DIR) { $env:HUB_DEPLOY_REMOTE_DIR } else { "wechat-linux-research/hub" }
 $TAR = Join-Path $env:TEMP "hub-v01.tar.gz"
 
 Write-Host "== 1. package local hub/ =="
@@ -13,10 +13,10 @@ scp $TAR "${REMOTE}:/tmp/hub-v01.tar.gz"
 
 $script = @'
 set -e
-mkdir -p ~/wechat-linux-research/hub
-tar -xzf /tmp/hub-v01.tar.gz -C ~/wechat-linux-research/hub
+mkdir -p ~/$REMOTE_DIR
+tar -xzf /tmp/hub-v01.tar.gz -C ~/$REMOTE_DIR
 rm -f /tmp/hub-v01.tar.gz
-cd ~/wechat-linux-research/hub
+cd ~/$REMOTE_DIR
 [ -f config/config.json ] || cp config/config.example.json config/config.json
 mkdir -p data logs
 mkdir -p ~/.config/systemd/user

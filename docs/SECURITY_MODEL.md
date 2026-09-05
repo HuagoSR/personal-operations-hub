@@ -111,7 +111,7 @@ projects:
 ## 11. Hub Self Project 安全模型（Phase 6，D012–D014）
 
 - Hub Self Project（`project_type=SYSTEM_HUB`）与 Global Hub 是两个**独立安全域**，永不合并。
-- 开发工作区：`~/worker-sandbox-untrusted/hub-dev/`（隔离副本）；生产 checkout 对 Worker 不可见。
+- 开发工作区：`${HUB_WORKSPACE_ROOT}/hub-dev/`（隔离副本）；生产 checkout 对 Worker 不可见。
 - 权限模板（系统默认，用户可收紧）：
   - dev 副本内：read/write/run_tests/install_deps **ALLOW**；git_commit **ALLOW**（hooks 审计、不推远程、commit 含 task id、hash 入 Result）
   - git_push / deploy / restart / 生产 DB mutation / Gateway 修改与重启：**ASK / HIGH_RISK**

@@ -63,7 +63,7 @@ function sampleResources() {
     const out = execSync('docker stats --no-stream --format "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}"', { encoding: 'utf8', timeout: 15000 });
     let wxCpu = null, wxMem = null;
     for (const line of out.split('\n')) {
-      if (line.startsWith('wx-research-agent-wechat')) {
+      if (line.startsWith(cfg.wechat_container_name)) {
         const [, cpu, mem] = line.split('|');
         wxCpu = parseFloat(cpu.replace('%', ''));
         const m = mem.match(/([\d.]+)MiB/);

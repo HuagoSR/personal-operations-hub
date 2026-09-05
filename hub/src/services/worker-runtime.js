@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { tx } = require('./tx');
 const { applyTransition } = require('./state-machine');
@@ -76,7 +77,7 @@ function upsertProfile(db, row) {
 }
 
 function resolveWorkspace(ctx, grant) {
-  const allowed = ctx.cfg.workerAllowedRoots || ['/home/huagosr/worker-sandbox'];
+  const allowed = ctx.cfg.workerAllowedRoots || [path.join(os.homedir(), 'pohub-workspace')];
   const candidate = (grant && grant.workspace) || ctx.cfg.workerDefaultWorkspace;
   if (!candidate) throw new Error('real worker requires a workspace (set hub config workerDefaultWorkspace or project workspace_path)');
   const abs = path.resolve(candidate);

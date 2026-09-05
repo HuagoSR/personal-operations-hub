@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # stop.sh — graceful stop (SIGTERM triggers flush + cursor persist)
 set -euo pipefail
-GATEWAY_DIR="$HOME/wechat-linux-research/gateway"
+GATEWAY_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 if systemctl --user list-unit-files wechat-gateway.service >/dev/null 2>&1; then
   systemctl --user stop wechat-gateway

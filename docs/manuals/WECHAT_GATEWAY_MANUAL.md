@@ -138,3 +138,4 @@ bash hub/scripts/apply-hub.sh ...                # Hub 自举 apply（不影响 
 - 新章节准入：必须基于实测（smoke/soak/故障注入），不写猜测
 - 本手册与代码同仓（GitHub personal-operations-hub docs/manuals/）；VPS `~/wechat-linux-research/docs/manuals/` 随同步分发
 - **姊妹手册**：`WECHAT_LOGIN_GUIDE.md`（登录操作流程，场景 A/B/C + 兜底 + 安全须知）；本手册 §3.8 与其互链，二者更新需同步
+- 路径说明：本手册中的 `~/wechat-linux-research/` 等为当前部署示例路径；新装环境请使用可移植路径模型（`HUB_CONFIG_DIR/HUB_DATA_DIR/HUB_STATE_DIR/HUB_WORKSPACE_ROOT` 等，见 `docs/RELEASE_POLICY.md`），具体命令路径以实际 checkout 位置为准

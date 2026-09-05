@@ -1,7 +1,8 @@
 {
-  "gateway_id": "huago-cone-wechat-01",
+  "gateway_id": "wechat-gateway-01",
   "base_url": "http://127.0.0.1:6174",
-  "token_file": "/home/huagosr/wechat-linux-research/deploy/token",
+  "token_file": "~/pohub/deploy/token",
+  "wechat_container_name": "wx-research-agent-wechat",
   "poll_ms": 2000,
   "fetch_limit": 30,
   "chats_limit": 50,
@@ -13,8 +14,8 @@
   "request_timeout_ms": 30000,
   "backoff": [1000, 2000, 4000, 8000, 15000, 30000],
   "log_level": "INFO",
-  "data_dir": "/home/huagosr/wechat-linux-research/gateway/data",
-  "log_dir": "/home/huagosr/wechat-linux-research/gateway/logs",
+  "data_dir": "~/pohub/gateway/data",
+  "log_dir": "~/pohub/gateway/logs",
   "skip_chats": ["filehelper", "weixin", "qmessage", "floatbottle", "medianote", "notifymessage", "fmessage"],
   "chat_filter": ""
 }

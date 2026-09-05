@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Read-only summary of a pending Hub self update. Never modifies production.
 set -euo pipefail
-DEV="${HUB_DEV:-$HOME/worker-sandbox-untrusted/hub-dev}"
+DEV="${HUB_DEV:-${HUB_WORKSPACE_ROOT:-$HOME/pohub-workspace}/hub-dev}"
+ENV_FILE="${HUB_ENV_FILE:-$HOME/.config/personal-operations-hub/hub.env}"
+[ -f "$ENV_FILE" ] && . "$ENV_FILE"
 BASE_TAG="${HUB_BASE_TAG:-phase6d-known-good}"
 cd "$DEV"
 HEAD=$(git rev-parse HEAD)

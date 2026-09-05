@@ -81,6 +81,7 @@ class CodexWorkerSession {
     this.prepareProfile();
     this.port = await freePort();
     const network = grantToSandbox(this.grant, this.profile.workspace).networkMode;
+    const codexBin = (this.ctx.cfg && this.ctx.cfg.codexBinary) || 'codex';
     const child = runSandboxed(
       {
         workspace: this.profile.workspace,
@@ -91,7 +92,7 @@ class CodexWorkerSession {
           'PATH=' + this.profile.workspace + '/.venv/bin:/usr/bin:/bin:/usr/sbin:/sbin',
         ],
       },
-      ['/usr/bin/codex', 'app-server', '--listen', `ws://127.0.0.1:${this.port}`],
+      [codexBin, 'app-server', '--listen', `ws://127.0.0.1:${this.port}`],
       { stdio: ['ignore', 'pipe', 'pipe'] }
     );
     child.stdout.on('data', (d) => { if (this.ctx.logger) this.ctx.logger.debug(`cx-worker[${this.execution.id}] ${d.toString().slice(0, 200)}`); });

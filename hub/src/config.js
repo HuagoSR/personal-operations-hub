@@ -1,13 +1,30 @@
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+
+// Portable path model (Release R0-B). All five roots are env-overridable;
+// defaults follow the XDG layout. Existing deployments keep working because
+// explicit config.json values take priority over DEFAULTS (LEGACY_COMPAT).
+function pathModel() {
+  const home = os.homedir();
+  return {
+    configDir: process.env.HUB_CONFIG_DIR || path.join(home, '.config', 'personal-operations-hub'),
+    dataDir: process.env.HUB_DATA_DIR || path.join(home, '.local', 'share', 'personal-operations-hub'),
+    stateDir: process.env.HUB_STATE_DIR || path.join(home, '.local', 'state', 'personal-operations-hub'),
+    runtimeDir: process.env.HUB_RUNTIME_DIR || os.tmpdir(),
+    workspaceRoot: process.env.HUB_WORKSPACE_ROOT || path.join(home, 'pohub-workspace'),
+  };
+}
+
+const M = pathModel();
 
 const DEFAULTS = {
   port: 8300,
   host: '127.0.0.1',
-  dataDir: 'data',
+  dataDir: M.dataDir,
   dbPath: '',
-  spoolDir: '/home/huagosr/wechat-linux-research/gateway/data/spool',
+  spoolDir: path.join(M.dataDir, 'gateway', 'spool'),
   ingestEnabled: true,
   ingestIntervalMs: 5000,
   inboxRule: 'mentioned_or_direct',
@@ -22,13 +39,14 @@ const DEFAULTS = {
   outboxMaxAttempts: 5,
   outboxBackoffMs: [1000, 2000, 4000, 8000, 15000],
   logLevel: 'INFO',
-  workerDefaultWorkspace: '/home/huagosr/worker-sandbox-untrusted/calc',
-  workerAllowedRoots: ['/home/huagosr/worker-sandbox-untrusted', '/home/huagosr/worker-sandbox'],
+  workerDefaultWorkspace: path.join(M.workspaceRoot, 'default'),
+  workerAllowedRoots: [M.workspaceRoot],
   workerTimeoutMs: 1800000,
   workerCodexModel: 'gpt-5.6-luna',
-  workerProfileRoot: '',
-  workerDeepseekApiKeyFile: '/home/huagosr/.opencode/.env',
-  selfDevWorkspace: '/home/huagosr/worker-sandbox-untrusted/hub-dev',
+  workerProfileRoot: path.join(M.stateDir, 'workers'),
+  workerDeepseekApiKeyFile: path.join(M.configDir, 'secrets', 'opencode.env'),
+  codexBinary: '',
+  selfDevWorkspace: path.join(M.workspaceRoot, 'hub-dev'),
   selfDevBaseTag: 'phase6d-known-good',
   intelligenceEnabled: false,
   episodeIdleMs: 600000,
@@ -39,13 +57,21 @@ const DEFAULTS = {
   intelligenceModel: 'deepseek-chat',
   intelligenceApiBase: 'https://api.deepseek.com',
   intelligenceApiKeyEnv: 'HUB_INTELLIGENCE_API_KEY',
-  intelligenceApiKeyFile: '/home/huagosr/.hub-intelligence.env',
+  intelligenceApiKeyFile: path.join(M.configDir, 'secrets', 'intelligence.env'),
   intelligenceDenyEgressChats: [],
   intelligenceBudgetDailyUsd: 0.5,
   intelligenceBudgetMonthlyUsd: 5,
   analysisThresholdHigh: 0.8,
   analysisThresholdShow: 0.5,
 };
+
+function expandHome(v) {
+  if (typeof v !== 'string' || !v.startsWith('~/')) return v;
+  return path.join(os.homedir(), v.slice(2));
+}
+
+const PATH_KEYS = ['dataDir', 'dbPath', 'spoolDir', 'workerDefaultWorkspace', 'workerProfileRoot',
+  'workerDeepseekApiKeyFile', 'selfDevWorkspace', 'intelligenceApiKeyFile'];
 
 function load(file) {
   const cfg = Object.assign({}, DEFAULTS);
@@ -55,6 +81,12 @@ function load(file) {
     } catch (e) {
       throw new Error(`config invalid: ${e.message}`);
     }
+  }
+  for (const k of PATH_KEYS) {
+    if (typeof cfg[k] === 'string') cfg[k] = expandHome(cfg[k]);
+  }
+  if (Array.isArray(cfg.workerAllowedRoots)) {
+    cfg.workerAllowedRoots = cfg.workerAllowedRoots.map(expandHome);
   }
   if (cfg.workerDeepseekApiKeyFile && fs.existsSync(cfg.workerDeepseekApiKeyFile)) {
     const raw = fs.readFileSync(cfg.workerDeepseekApiKeyFile, 'utf8').split('\n')[0];
@@ -67,7 +99,6 @@ function load(file) {
     if (idx > 0) cfg.intelligenceApiKey = raw.slice(idx + 1).trim();
   }
   if (process.env.HUB_INTELLIGENCE_API_KEY) cfg.intelligenceApiKey = process.env.HUB_INTELLIGENCE_API_KEY;
-  if (process.env.HUB_WORKER_DEEPSEEK_API_KEY) cfg.workerDeepseekApiKey = process.env.HUB_WORKER_DEEPSEEK_API_KEY;
   if (process.env.HUB_PORT) cfg.port = parseInt(process.env.HUB_PORT, 10);
   if (process.env.HUB_HOST) cfg.host = process.env.HUB_HOST;
   if (process.env.HUB_DB_PATH) cfg.dbPath = process.env.HUB_DB_PATH;
@@ -81,7 +112,7 @@ function resolveDbPath(cfg, root) {
   if (cfg.dbPath) {
     return path.isAbsolute(cfg.dbPath) ? cfg.dbPath : path.join(root, cfg.dbPath);
   }
-  return path.join(root, cfg.dataDir, 'hub.db');
+  return path.join(cfg.dataDir, 'hub.db');
 }
 
-module.exports = { load, DEFAULTS, resolveDbPath };
+module.exports = { load, DEFAULTS, resolveDbPath, pathModel };
