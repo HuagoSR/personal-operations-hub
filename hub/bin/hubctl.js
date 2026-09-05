@@ -37,6 +37,29 @@ function pathModel() {
   };
 }
 
+// Shared env file (same one the shell scripts source): apply unless already set.
+function loadEnvFile() {
+  const f = process.env.HUB_ENV_FILE || path.join(os.homedir(), '.config', 'personal-operations-hub', 'hub.env');
+  try {
+    if (!fs.existsSync(f)) return;
+    for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
+      const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+      if (!m) continue;
+      const key = m[1];
+      if (process.env[key] === undefined) process.env[key] = m[2].replace(/\$\{?([A-Z_][A-Z0-9_]*)\}?/g, (_, k) => process.env[k] || '');
+    }
+  } catch (e) { }
+}
+
+function gatewayHealth() {
+  const gdir = process.env.GATEWAY_DIR || path.join(HUB_ROOT, '..', 'gateway');
+  const h = path.join(gdir, 'data', 'state', 'health.json');
+  try {
+    if (!fs.existsSync(h)) return null;
+    return JSON.parse(fs.readFileSync(h, 'utf8'));
+  } catch (e) { return null; }
+}
+
 function loadHubConfig() {
   const { load } = require(path.join(HUB_ROOT, 'src', 'config'));
   return load(process.env.HUB_CONFIG || path.join(HUB_ROOT, 'config', 'config.json'));
@@ -135,9 +158,11 @@ function cmdDoctor(cfg, opts) {
     const c = sh('docker', ['ps', '--format', '{{.Names}}']);
     const name = cfg.wechatContainerName || process.env.WECHAT_CONTAINER_NAME || 'wx-research-agent-wechat';
     if (!(c.stdout || '').includes(name)) { issues.push(`wechat: container ${name} not running (optional)`); return false; }
-    const agent = sh('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', 'http://127.0.0.1:6174/api/health']);
-    if (agent.stdout !== '200') issues.push('wechat: agent-server unreachable');
-    return agent.stdout === '200';
+    const gh = gatewayHealth();
+    if (!gh) { issues.push('wechat: gateway health state unavailable'); return false; }
+    if (gh.agent_wechat !== 'reachable') issues.push(`wechat: agent-server ${gh.agent_wechat || 'unknown'}`);
+    if (gh.wechat_auth !== 'logged_in') issues.push(`wechat: auth ${gh.wechat_auth || 'unknown'}`);
+    return gh.agent_wechat === 'reachable';
   })();
 
   checks.intelligence = (() => {
@@ -165,7 +190,7 @@ function cmdDoctor(cfg, opts) {
     const bkDir = process.env.HUB_BACKUP_DIR || path.join(cfg.dataDir, '..', 'backups');
     let newest = null;
     try {
-      const files = fs.readdirSync(bkDir).filter((f) => f.startsWith('hub-backup-') && f.endsWith('.tar.gz')).sort();
+      const files = fs.readdirSync(bkDir).filter((f) => f.startsWith('hub-') && f.endsWith('.tar.gz')).sort();
       newest = files.length ? files[files.length - 1] : null;
     } catch (e) { }
     if (!newest) issues.push('data: no backup found yet');
@@ -396,6 +421,7 @@ async function cmdOnboard(cfg) {
 
 // ---------- dispatch ----------
 async function main() {
+  loadEnvFile();
   const args = process.argv.slice(2);
   const cmd = args[0] || 'help';
   const flag = (name) => args.includes(name);
