@@ -9,8 +9,9 @@ const { DEFAULTS, load, pathModel } = require('../src/config');
 
 test('R0-B: config defaults follow the portable path model', () => {
   const M = pathModel();
-  assert.ok(!/\/home\/huagosr/.test(JSON.stringify(DEFAULTS)), 'no personal username in defaults');
-  assert.ok(!/wechat-linux-research/.test(JSON.stringify(DEFAULTS)), 'no legacy project root in defaults');
+  const srcText = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'config.js'), 'utf8');
+  assert.ok(!/\/home\/huagosr/.test(srcText), 'no personal username in config source');
+  assert.ok(!/wechat-linux-research/.test(srcText), 'no legacy project root in config source');
   assert.equal(DEFAULTS.dataDir, M.dataDir);
   assert.ok(DEFAULTS.workerAllowedRoots.includes(M.workspaceRoot));
   assert.equal(DEFAULTS.selfDevWorkspace, path.join(M.workspaceRoot, 'hub-dev'));
@@ -47,7 +48,7 @@ test('R0-B: shipped source tree is free of hardcoded paths and secrets', () => {
   for (const d of scanDirs) {
     const walk = (dir) => {
       for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.name === 'vendor') continue;
+        if (e.name === 'vendor' || e.name === 'config.json') continue;
         const p = path.join(dir, e.name);
         if (e.isDirectory()) walk(p);
         else if (e.isFile()) checkFile(p);

@@ -13,6 +13,7 @@ scp $TAR "${REMOTE}:/tmp/hub-v01.tar.gz"
 
 $script = @'
 set -e
+REMOTE_DIR="__REMOTE_DIR__"
 mkdir -p ~/$REMOTE_DIR
 tar -xzf /tmp/hub-v01.tar.gz -C ~/$REMOTE_DIR
 rm -f /tmp/hub-v01.tar.gz
@@ -23,6 +24,10 @@ mkdir -p ~/.config/systemd/user
 cp scripts/personal-hub.service ~/.config/systemd/user/personal-hub.service
 cp scripts/personal-hub-selftest.service ~/.config/systemd/user/personal-hub-selftest.service
 cp scripts/personal-hub-selftest.timer ~/.config/systemd/user/personal-hub-selftest.timer
+# rewrite portable template (%h/pohub) to this host's actual checkout dir
+sed -i "s|%h/pohub/hub|%h/$REMOTE_DIR|" ~/.config/systemd/user/personal-hub.service
+sed -i "s|%h/pohub/hub|%h/$REMOTE_DIR|" ~/.config/systemd/user/personal-hub-selftest.service
+sed -i "s|%h/.config/personal-operations-hub/hub.env|%h/.hub-intelligence.env|" ~/.config/systemd/user/personal-hub.service
 systemctl --user daemon-reload
 systemctl --user enable personal-hub
 systemctl --user enable --now personal-hub-selftest.timer
@@ -32,6 +37,7 @@ systemctl --user status personal-hub --no-pager | head -n 8
 '@
 
 Write-Host "== 3. install on remote =="
+$script = $script.Replace("__REMOTE_DIR__", $REMOTE_DIR)
 $script = $script.Replace("`r`n", "`n")
 $script | ssh $REMOTE "bash -s"
 
