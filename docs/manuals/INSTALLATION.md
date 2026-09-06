@@ -8,25 +8,33 @@
 ## 1. 快速开始（推荐）
 
 ```bash
+# 0. 前置自检（不满足 → Node 用 nvm/NodeSource 安装；Codex 见下文）
+node --version          # >= 22.13
+codex --version
+codex login status
+
 # 1. 系统依赖
 sudo apt-get update && sudo apt-get install -y bubblewrap rsync tar curl
-# Node >= 22.13：使用 nvm / NodeSource 安装，验证 node --version
 
-# 2. 获取代码（GitHub Release 制品或仓库）
+# 2. 获取 Release 制品（v0.1.0 正式发布后替换为真实地址）
 mkdir -p ~/pohub && cd ~/pohub
+curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/personal-operations-hub-v0.1.0.tar.gz
+curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/SHA256SUMS
+sha256sum -c SHA256SUMS
+
+# 3. 解压并初始化（交互式：系统检查 → Codex 校验 → 可选微信/DeepSeek → 目录规划 → 服务安装并启动）
 tar -xzf personal-operations-hub-v0.1.0.tar.gz
-cd hub
-
-# 3. 交互式初始化
+cd personal-operations-hub-v0.1.0/hub
 node bin/hubctl.js onboard
-#   → 系统检查 → Codex 校验 → 可选微信/DeepSeek → 安装目录规划 → 安装 systemd 服务并启动
+# onboard 结束时会创建 ~/.local/bin/hubctl 软链（确保 ~/.local/bin 在 PATH 中）
 
-# 4. 校验
-node bin/hubctl.js doctor     # 期望 READY
+# 4. 校验（此后统一使用 hubctl 命令）
+hubctl doctor     # 期望 READY
 
-# 5. 访问 Control Web（本机 SSH 隧道）
-ssh -L 8300:127.0.0.1:8300 <server>
-# 浏览器打开 http://127.0.0.1:8300
+# 5. 访问 Control Web —— 注意命令执行位置：
+#    服务器上：  hubctl status
+#    本地电脑：  ssh -L 8300:127.0.0.1:8300 user@your-server
+#    本地浏览器打开：http://127.0.0.1:8300
 ```
 
 ## 2. 手动安装（不启用 onboard）

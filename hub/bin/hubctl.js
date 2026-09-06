@@ -486,6 +486,18 @@ async function cmdOnboard(cfg) {
     cmdService('install');
     cmdSvc('start', {});
   }
+
+  // make `hubctl` available on PATH (best effort)
+  const binDir = path.join(os.homedir(), '.local', 'bin');
+  try {
+    fs.mkdirSync(binDir, { recursive: true });
+    const link = path.join(binDir, 'hubctl');
+    if (!fs.existsSync(link)) fs.symlinkSync(path.join(HUB_ROOT, 'bin', 'hubctl.js'), link);
+    console.log(`hubctl linked: ${link} (ensure ~/.local/bin is on PATH)`);
+  } catch (e) {
+    console.log(`(hubctl symlink skipped: ${e.message})`);
+  }
+
   console.log('');
   console.log('onboard complete. Run: hubctl doctor');
 }
