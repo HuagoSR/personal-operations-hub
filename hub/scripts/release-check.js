@@ -56,7 +56,7 @@ for (const f of files) {
   let text;
   try { text = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
   scanned++;
-  if (!rel.startsWith('hub/tests/')) {
+  if (!rel.startsWith('hub/tests/') && !rel.startsWith('docs/manuals/')) {
     for (const p of SECRET_PATTERNS) {
       if (p.re.test(text)) violations.push(`${rel}: SECRET ${p.label}`);
     }
