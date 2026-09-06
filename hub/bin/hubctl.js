@@ -105,7 +105,7 @@ function cmdStatus(cfg) {
 }
 
 // ---------- doctor ----------
-function cmdDoctor(cfg, opts) {
+async function cmdDoctor(cfg, opts) {
   const M = pathModel();
   const issues = [];
   const checks = {};
@@ -197,6 +197,37 @@ function cmdDoctor(cfg, opts) {
     return !!newest;
   })();
 
+  if (opts.deep) {
+    // deep: disk headroom on the data partition
+    const df = sh('df', ['-P', '-k', path.dirname(resolveDb(cfg, opts))]);
+    if (df.code === 0) {
+      const line = (df.stdout || '').split('\n')[1];
+      const avail = line ? parseInt(line.trim().split(/\s+/)[3], 10) : NaN;
+      if (!isNaN(avail) && avail < 1024 * 1024) issues.push(`system: disk headroom low (${(avail / 1024).toFixed(0)} MiB)`);
+      else console.log(`  disk headroom: ${isNaN(avail) ? 'n/a' : (avail / 1024 / 1024).toFixed(1)} GiB`);
+    }
+    // deep: codex app-server can start (spawn briefly, poll readyz, then kill)
+    const codexBin = cfg.codexBinary || which('codex');
+    if (codexBin) {
+      const port = 49000 + Math.floor(Math.random() * 1000);
+      const child = require('child_process').spawn(codexBin, ['app-server', '--listen', `ws://127.0.0.1:${port}`], { stdio: 'ignore' });
+      let ok = false;
+      const deadline = Date.now() + 15000;
+      const timer = setInterval(() => {
+        try {
+          const r = spawnSync('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', `http://127.0.0.1:${port}/readyz`], { encoding: 'utf8', timeout: 3000 });
+          if (r.stdout === '200') ok = true;
+        } catch (e) { }
+        if (ok || Date.now() > deadline) { clearInterval(timer); try { child.kill('SIGTERM'); } catch (e) { } }
+      }, 1500);
+      const wait = new Promise((resolve) => setTimeout(resolve, 16000));
+      // eslint-disable-next-line no-unused-vars
+      await wait;
+      if (ok) console.log('  codex app-server: startable');
+      else issues.push('codex: app-server failed to start within 15s');
+    }
+  }
+
   const layout = cfg.dataDir !== M.dataDir ? 'LEGACY_COMPAT' : 'PORTABLE';
   let verdict;
   if (issues.some((i) => i.startsWith('system:') || i.startsWith('hub: database') || i.startsWith('codex: not found'))) verdict = 'ACTION_REQUIRED';
@@ -228,6 +259,17 @@ function cmdBackup(cfg, opts) {
   db.exec(`VACUUM INTO '${snapshot.replace(/'/g, "''")}'`);
   db.close();
 
+  // verify the snapshot before packaging
+  const snapDb = new DatabaseSync(snapshot, { readOnly: true });
+  const integ = snapDb.prepare('PRAGMA integrity_check').get();
+  if (String(Object.values(integ)[0]) !== 'ok') {
+    snapDb.close();
+    fs.rmSync(work, { recursive: true, force: true });
+    console.error('snapshot integrity_check failed — backup aborted');
+    process.exit(1);
+  }
+  snapDb.close();
+
   const manifest = {
     release: RELEASE,
     schema_version: Number(mig.v),
@@ -235,8 +277,11 @@ function cmdBackup(cfg, opts) {
     source_host: os.hostname(),
     components: { hub: 'v' + RELEASE, gateway: opts.withGateway ? 'included' : 'not-included' },
     db_file: 'hub.db',
+    snapshot_method: 'VACUUM INTO',
   };
   fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  const verFile = path.join(HUB_ROOT, '..', 'VERSION');
+  if (fs.existsSync(verFile)) fs.copyFileSync(verFile, path.join(work, 'VERSION'));
 
   if (opts.withGateway) {
     const gdir = process.env.GATEWAY_DIR || path.join(HUB_ROOT, '..', 'gateway');
@@ -281,6 +326,19 @@ function cmdRestore(cfg, opts) {
     console.error(`schema_version invalid: ${manifest.schema_version}`);
     process.exit(1);
   }
+  // downgrade protection: refuse backups newer than this code's migrations
+  const migDir = path.join(HUB_ROOT, 'src', 'migrations');
+  let maxMig = 0;
+  try {
+    for (const f of fs.readdirSync(migDir)) {
+      const v = parseInt(f.split('_')[0], 10);
+      if (!isNaN(v) && v > maxMig) maxMig = v;
+    }
+  } catch (e) { }
+  if (manifest.schema_version > maxMig) {
+    console.error(`schema downgrade refused: backup=${manifest.schema_version} > code migrations=${maxMig}`);
+    process.exit(1);
+  }
   const srcDb = path.join(work, 'hub.db');
   if (!fs.existsSync(srcDb)) { console.error('hub.db missing in backup'); process.exit(1); }
   const dbPath = resolveDb(cfg, opts);
@@ -299,8 +357,21 @@ function cmdRestore(cfg, opts) {
   check.close();
   console.log(`restore OK: ${dbPath}`);
   console.log(`  schema_version=${mig.v} (backup said ${manifest.schema_version})`);
-  if (fs.existsSync(path.join(work, 'gateway-state'))) {
-    console.log('  gateway state included in backup; restore manually into gateway data/state if needed');
+  const gwState = path.join(work, 'gateway-state');
+  if (fs.existsSync(gwState)) {
+    if (opts.withGateway) {
+      const gdir = process.env.GATEWAY_DIR || path.join(HUB_ROOT, '..', 'gateway');
+      const st = path.join(gdir, 'data', 'state');
+      fs.mkdirSync(st, { recursive: true });
+      for (const f of fs.readdirSync(gwState)) {
+        const dst = path.join(st, f);
+        if (fs.existsSync(dst)) fs.copyFileSync(dst, `${dst}.pre-restore-${stamp}`);
+        fs.copyFileSync(path.join(gwState, f), dst);
+      }
+      console.log('  gateway state restored (cursor/dedup/health)');
+    } else {
+      console.log('  gateway state present in backup; re-run with --with-gateway to restore it');
+    }
   }
   fs.rmSync(work, { recursive: true, force: true });
   console.log('  run: hubctl doctor');
@@ -435,7 +506,7 @@ async function main() {
   switch (cmd) {
     case 'version': cmdVersion(); break;
     case 'status': cmdStatus(cfg); break;
-    case 'doctor': cmdDoctor(cfg, opts); break;
+    case 'doctor': await cmdDoctor(cfg, opts); break;
     case 'backup': cmdBackup(cfg, opts); break;
     case 'restore': cmdRestore(cfg, opts); break;
     case 'start': case 'stop': case 'restart': cmdSvc(cmd, opts); break;

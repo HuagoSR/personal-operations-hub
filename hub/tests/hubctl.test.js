@@ -102,3 +102,39 @@ test('hubctl: restore rejects release mismatch', () => {
   assert.equal(r.code, 1);
   assert.match(r.err || r.out, /release mismatch/);
 });
+
+test('hubctl: restore refuses schema newer than code (downgrade protection)', () => {
+  const t = tempEnv();
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'hubctl-down-'));
+  const migDir = path.resolve(__dirname, '..', 'src', 'migrations');
+  const codeMax = Math.max(...fs.readdirSync(migDir).map((f) => parseInt(f.split('_')[0], 10)).filter((n) => !isNaN(n)));
+  fs.writeFileSync(path.join(work, 'manifest.json'), JSON.stringify({ release: '0.1.0', schema_version: codeMax + 99 }));
+  fs.writeFileSync(path.join(work, 'hub.db'), 'not a db');
+  const tar = path.join(t.base, 'down.tar.gz');
+  spawnSync('tar', ['-czf', tar, '-C', work, '.'], { encoding: 'utf8' });
+  const r = run(['restore', tar, '--db', path.join(t.base, 'x.db'), '--force'], t.env);
+  assert.equal(r.code, 1);
+  assert.match(r.err || r.out, /downgrade refused/);
+});
+
+test('hubctl: backup --with-gateway packages gateway state; restore writes it back', () => {
+  const t = tempEnv();
+  const dbFile = path.join(t.base, 'data', 'hub.db');
+  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+  const db = openDatabase(dbFile);
+  migrate(db, path.resolve(__dirname, '..', 'src', 'migrations'));
+  db.close();
+  const gdir = path.join(t.base, 'gateway');
+  fs.mkdirSync(path.join(gdir, 'data', 'state'), { recursive: true });
+  fs.writeFileSync(path.join(gdir, 'data', 'state', 'cursor.json'), '{"n":42}');
+  fs.writeFileSync(path.join(gdir, 'data', 'state', 'health.json'), '{"ok":true}');
+  const outDir = path.join(t.base, 'backups');
+  const env = { ...t.env, GATEWAY_DIR: gdir };
+  assert.equal(run(['backup', '--db', dbFile, '--out', outDir, '--with-gateway'], env).code, 0);
+  const tar = path.join(outDir, fs.readdirSync(outDir).find((f) => f.endsWith('.tar.gz')));
+  fs.rmSync(dbFile);
+  fs.rmSync(path.join(gdir, 'data', 'state'), { recursive: true, force: true });
+  const r = run(['restore', tar, '--db', dbFile, '--with-gateway', '--force'], env);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(fs.readFileSync(path.join(gdir, 'data', 'state', 'cursor.json'), 'utf8'), '{"n":42}');
+});
