@@ -16,7 +16,7 @@ codex login status
 # 1. 系统依赖
 sudo apt-get update && sudo apt-get install -y bubblewrap rsync tar curl
 
-# 2. 获取 Release 制品（v0.1.0 正式发布后替换为真实地址）
+# 2. 获取 Release 制品
 mkdir -p ~/pohub && cd ~/pohub
 curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/personal-operations-hub-v0.1.0.tar.gz
 curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/SHA256SUMS

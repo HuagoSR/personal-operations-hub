@@ -4,7 +4,7 @@
 
 ## Release Status
 
-Target release: **v0.1.0**（release candidate, in preparation）
+Current release: **v0.1.0**（2026-09-08 发布；clean-room 实测通过）
 
 发布边界与制品清单见 `docs/RELEASE_POLICY.md`。
 
@@ -19,7 +19,7 @@ codex login status
 # 1. 系统依赖
 sudo apt-get update && sudo apt-get install -y bubblewrap rsync tar curl
 
-# 2. 下载 Release 制品（v0.1.0 正式发布后替换为真实地址）
+# 2. 下载 Release 制品（校验 SHA256）
 mkdir -p ~/pohub && cd ~/pohub
 curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/personal-operations-hub-v0.1.0.tar.gz
 curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/SHA256SUMS
@@ -61,7 +61,7 @@ ssh -L 8300:127.0.0.1:8300 user@your-server
 | Worker | 已安装并登录的 Codex CLI |
 | Network | 能访问所需模型 API 与软件源 |
 
-> v0.1.0 的最低资源要求将在 clean-room deployment 实测后最终确认；推荐 4+ vCPU / 8 GB RAM / 40 GB+ 可用空间。
+> 硬件基线（2026-09-08 clean-room 实测通过：Ubuntu 22.04 / 2 vCPU / 1.9 GB RAM）：最低 ≥2 vCPU / ≥2 GB RAM / ≥20 GB 可用空间；推荐 4+ vCPU / 8 GB RAM / 40 GB+。
 
 可选：Docker + agent-wechat（微信集成）；DeepSeek API（Intelligence）。
 

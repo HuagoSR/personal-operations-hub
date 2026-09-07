@@ -20,8 +20,8 @@
 - Node.js ≥ 22.13；bubblewrap；tar/rsync/sha256sum
 - 外部前置：Codex 已安装并登录（v0.1.0 硬要求）
 - 可选集成：Docker + agent-wechat（微信）；DeepSeek（Intelligence）
-- 硬件（开发目标，clean-room 实测后定稿）：
-  - 最低开发目标：≥2 vCPU / ≥4 GB RAM / ≥20 GB 空闲磁盘
+- 硬件（R0-E clean-room 实测于 2026-09-08：Ubuntu 22.04，2 vCPU / 1.9 GB RAM 全流程通过）：
+  - 最低实测：≥2 vCPU / ≥2 GB RAM / ≥20 GB 空闲磁盘
   - 推荐：4+ vCPU / 8 GB RAM / 40 GB 空闲磁盘
 
 ## 3. Release 制品
