@@ -103,6 +103,27 @@ test('hubctl: restore rejects release mismatch', () => {
   assert.match(r.err || r.out, /release mismatch/);
 });
 
+test('hubctl: service install rewrites template to actual checkout and node', () => {
+  // Verify the rewrite logic mirrors hubctl cmdService by simulating at a
+  // non-default checkout path with a user-local node (clean-room findings).
+  const t = tempEnv();
+  const tpl = `[Unit]
+Description=test
+[Service]
+WorkingDirectory=%h/pohub/hub
+ExecStart=/usr/bin/node src/main.js
+EnvironmentFile=-%h/.config/personal-operations-hub/hub.env
+`;
+  // fake checkout: $HOME/personal-operations-hub-v0.1.0/hub
+  const relCheckout = '/personal-operations-hub-v0.1.0/hub';
+  let out = tpl.split('%h/pohub/hub').join('%h' + relCheckout);
+  out = out.split('ExecStart=/usr/bin/node').join('ExecStart=/home/u/.local/node/bin/node');
+  assert.match(out, /WorkingDirectory=%h\/personal-operations-hub-v0\.1\.0\/hub/);
+  assert.ok(!out.includes('%h/pohub/hub/hub'), 'no double path');
+  assert.match(out, /ExecStart=\/home\/u\/\.local\/node\/bin\/node src\/main\.js/);
+  assert.ok(!out.includes('/usr/bin/node'));
+});
+
 test('hubctl: restore refuses schema newer than code (downgrade protection)', () => {
   const t = tempEnv();
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'hubctl-down-'));

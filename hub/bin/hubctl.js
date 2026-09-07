@@ -381,18 +381,22 @@ function cmdRestore(cfg, opts) {
 function cmdService(action) {
   const unit = 'personal-hub.service';
   const units = [unit];
-  const script = path.join(HUB_ROOT, 'scripts', unit);
   const unitDir = path.join(os.homedir(), '.config', 'systemd', 'user');
   if (action === 'install') {
     fs.mkdirSync(unitDir, { recursive: true });
     for (const u of units) {
       let content = fs.readFileSync(path.join(HUB_ROOT, 'scripts', u), 'utf8');
-      content = content.split('%h/pohub').join(`%h${HUB_ROOT.split(os.homedir())[1] || ''}`.replace(/\\/g, '/'));
+      // Rewrite the portable template: replace the full "%h/pohub/hub" token
+      // with this actual checkout path.
+      const relCheckout = HUB_ROOT.replace(os.homedir(), '').replace(/\\/g, '/');
+      content = content.split('%h/pohub/hub').join(`%h${relCheckout}`);
+      // Use the node that is running hubctl (works for user-local installs too).
+      content = content.split('ExecStart=/usr/bin/node').join(`ExecStart=${process.execPath}`);
       fs.writeFileSync(path.join(unitDir, u), content);
     }
     sh('systemctl', ['--user', 'daemon-reload']);
     sh('systemctl', ['--user', 'enable', 'personal-hub']);
-    console.log('service installed (personal-hub)');
+    console.log(`service installed (personal-hub) for checkout ${HUB_ROOT}`);
   } else if (action === 'uninstall') {
     sh('systemctl', ['--user', 'disable', '--now', 'personal-hub']);
     fs.rmSync(path.join(unitDir, unit), { force: true });
