@@ -22,9 +22,9 @@ curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0
 curl -LO https://github.com/HuagoSR/personal-operations-hub/releases/download/v0.1.0/SHA256SUMS
 sha256sum -c SHA256SUMS
 
-# 3. 解压并初始化（交互式：系统检查 → Codex 校验 → 可选微信/DeepSeek → 目录规划 → 服务安装并启动）
+# 3. 解压并初始化（制品为平铺布局：~/pohub/hub 即 Hub Core；交互式：系统检查 → Codex 校验 → 可选微信/DeepSeek → 目录规划 → 服务安装并启动）
 tar -xzf personal-operations-hub-v0.1.0.tar.gz
-cd personal-operations-hub-v0.1.0/hub
+cd ~/pohub/hub
 node bin/hubctl.js onboard
 # onboard 结束时会创建 ~/.local/bin/hubctl 软链（确保 ~/.local/bin 在 PATH 中）
 
